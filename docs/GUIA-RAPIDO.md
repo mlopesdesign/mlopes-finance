@@ -1,4 +1,4 @@
-# Guia Rápido — MLopes Finance v0.5.0
+﻿# Guia Rápido — MLopes Finance v0.5.0
 
 Para o dia a dia. 1 página.
 
@@ -57,3 +57,7 @@ Por enquanto, use mouse. Atalhos de teclado estão planejados para v0.6.0.
   ├── mlopes-finance.sqlite.old  ← versão anterior (auto-backup)
   └── mlopes-finance.sqlite.tmp  ← temp durante gravação
 ```
+
+
+- **Importar extrato**: OFX/CSV com detecção de duplicidade (item 5 do manual).
+- **Backup e restauração** em Configurações → Avançado (item 6 do manual).

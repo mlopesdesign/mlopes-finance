@@ -1,4 +1,4 @@
-# Manual do Usuário — MLopes Finance v0.5.0
+﻿# Manual do Usuário — MLopes Finance v0.5.0
 
 Bem-vindo ao MLopes Finance, o sistema de gestão financeira pessoal e empresarial para Windows 10/11, local-first e auditável. Este manual cobre a versão 0.5.0.
 
@@ -196,3 +196,34 @@ A barra lateral esquerda tem 11 itens + Configurações no rodapé:
 ## 9. Versão
 
 Este manual cobre a v0.5.0. Funcionalidades das próximas versões (conciliação, comercial, relatórios avançados) virão em releases futuros. Veja `HISTORICO-DE-VERSOES.md` no diretório do projeto.
+
+## 5. Importar extrato (OFX / CSV) — v0.6.0
+
+Acesse pelo menu lateral **Importar extrato**.
+
+1. Clique em **Selecionar arquivo** e escolha um `.ofx`, `.qfx` ou `.csv` do seu banco.
+2. Clique em **Pré-visualizar**. O app vai parsear o arquivo, detectar duplicidades (mesma data + valor + descrição já existe?) e mostrar uma tabela com cada transação e seu status:
+   - **Pendente**: vai virar lançamento quando você confirmar.
+   - **Duplicado**: já existe no banco, será ignorado.
+3. Escolha a **conta de destino** e a **natureza padrão** (quando ambíguo).
+4. Clique em **Confirmar importação** para criar os lançamentos. Ou **Cancelar importação** para descartar.
+
+O histórico fica disponível na parte de baixo da tela.
+
+**Formato CSV esperado** (auto-detecta separador e data):
+- Colunas: `data`, `valor`, `descricao` (case-insensitive, busca por nome também)
+- Separadores: `,`, `;` ou TAB
+- Datas: `YYYY-MM-DD`, `DD/MM/YYYY`, `DD-MM-YYYY` ou `YYYYMMDD`
+- Valores: `150.50` ou `150,50` (negativos viram despesa, positivos viram receita)
+
+**Formato OFX esperado**: SGML (maioria dos bancos brasileiros) ou XML. Suporta tags `<TAG>valor` ou `TAG:valor`.
+
+## 6. Backup e restauração (Fase 7)
+
+Acesse **Configurações → Avançado**.
+
+- **Exportar backup…**: gera um arquivo `.sqlite` do estado atual. Escolha onde salvar.
+- **Restaurar de arquivo…**: escolhe um backup anterior e substitui o banco atual (com validação — verifica tabelas essenciais e exige ≥ 1 contexto cadastrado).
+- **Verificar agora**: mostra a contagem de registros por tabela (radiografia).
+
+O backup é a forma mais segura de migrar entre máquinas, ou de ter um ponto de restauração antes de mudanças grandes.
