@@ -25,6 +25,12 @@
   - **Conciliacao bancaria automatica** com pareamento data+valor+descricao.
   - **Fluxo comercial** (orcamento → aprovacao → contrato → recebimentos).
 
+## 0.8.2 — Segunda release gatilho (auto-update validado v0.8.1 → v0.8.2)
+
+- **Por que uma v0.8.2 tao rapido depois da v0.8.1**: a v0.8.1 foi a primeira release gatilho (app na v0.8.0 detecta v0.8.1). A v0.8.2 e a segunda: app na v0.8.1 detecta v0.8.2. Prova que o auto-update funciona em cadeia: cada release nova notifica a anterior.
+- **Mudanca minima no codigo**: nada alem do bump de versao. E a rede de seguranca do auto-update — depois desta, qualquer v0.8.2+ vai detectar futuras releases normalmente.
+- **34/34 testes verde**, encoding UTF-8 sem BOM, mesmo instalador Inno Setup com upgrade automatico pelo AppId.
+
 ## 0.8.1 — Limpa header + prepara terreno para o auto-update
 
 - **Tira o path do banco do header**: o `Versão 0.8.0 · C:\Users\mlope\AppData\Roaming\MLopesFinance\dados\mlopes-finance.sqlite` que aparecia no status (logo abaixo do topbar) foi removido. Era informacao de debug que poluia a visao geral. Agora o status so mostra `Versão 0.8.1`.
