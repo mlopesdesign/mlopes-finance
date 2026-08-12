@@ -10,6 +10,7 @@ import { criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, ad
 import { criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao } from './core/importacao.js';
 import { balancete, comparativo, exportaCSV } from './core/relatorios.js';
 import { checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, compararVersao, pathTempInstalador } from './core/update.js';
+import { APP_VERSION } from './ambiente.js';
 
 export function criarApi(db, persistir = () => {}) {
   const rotas = {

@@ -1,4 +1,13 @@
 
+## 0.8.4 — HOTFIX: servidor.js usa APP_VERSION sem importar
+
+- **Bug critico na v0.8.3**: `src/js/backend/servidor.js` linha 96 usava `APP_VERSION` na rota `update:checar` mas **nunca importou** de `./ambiente.js`. Resultado: ao chamar a checagem de atualizacao (que acontece no boot, em `Configuracoes > Avancado > Verificar atualizacoes`, ou ao clicar na pill), o `servidor.js` quebrava com `ReferenceError: APP_VERSION is not defined` e o app ficava travado.
+- **Por que nao foi pego antes**: o `npm test` (34/34 verde) exercita as funcoes core diretamente (`core/update.js` -> `checarAtualizacao`). Nenhum teste chama a rota `update:checar` via `criarApi()`. Entao o import faltando passou despercebido em todas as 4 versoes (v0.7.1 ate v0.8.3).
+- **Fix**: adicionado `import { APP_VERSION } from './ambiente.js';` no topo de `servidor.js` (e no par `resources/`).
+- **Licao**: a suite de testes precisa de um smoke test que faca `criarApi(db, persistir)` e exercite as rotas que dependem de globais/constantes. Adicionar teste de regressao na v0.8.5+.
+- **Bump 0.8.3 → 0.8.4** em 7 lugares. Encoding UTF-8 sem BOM, `node --check` em todos os arquivos alterados, 34/34 testes verde (o teste nao cobre a rota, mas a sintaxe agora esta correta).
+- **Side effect positivo**: como a v0.8.4 e uma nova release, quem estava na v0.8.3 vai ver a pill amarela (assim que o rate limit do GitHub resetar, ~1h).
+
 ## 0.8.0 — Fase 1 (Contextos UI) + validação end-to-end do auto-update
 
 - **Fase 1 do plano** (item 3.1 do `PROJETO-COMPLETO-E-PLANO-DE-EXECUCAO-MLOPES-FINANCE.md`, "Contextos financeiros" exposta na UI):
