@@ -1,22 +1,22 @@
 # GRAPHIFY — Mapa técnico do MLopes Finance
 
-> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-12T05:35:59.963Z.
+> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-12T05:55:34.484Z.
 > Não editar manualmente. Fonte da verdade: `src/` e `tools/`.
 
 ## Resumo
 
 | Categoria | Quantidade |
 |---|---|
-| core | 9 |
+| core | 10 |
 | tela | 2 |
 | backend | 4 |
 | sql | 1 |
 | vendor | 0 |
 | tool | 3 |
 
-Total: 21 módulos.
+Total: 22 módulos.
 
-## core (9)
+## core (10)
 
 ### `src/js/backend/core/backup.js`
 
@@ -53,6 +53,14 @@ MLopes Finance — backend de configurações
 ### `src/js/backend/core/financeiro.js`
 
 **Exports:** `validarValorCentavos`, `validarData`, `criarContexto`, `criarConta`, `criarCategoria`
+
+### `src/js/backend/core/importacao.js`
+
+MLopes Finance — importacao de extratos OFX e CSV
+
+**Exports:** `parsearOFX`, `parsearCSV`, `criarPreviaImportacao`, `confirmarImportacao`, `listarImportacoes`, `cancelarImportacao`
+
+**Imports:** criarLancamento ← `./lancamentos.js`
 
 ### `src/js/backend/core/lancamentos.js`
 
@@ -136,7 +144,7 @@ MLopes Finance — GRAPHIFY.md generator
 
 ### `src/js/backend/schema.sql`
 
-**Tabelas:** `meta`, `contextos_financeiros`, `contas`, `categorias`, `lancamentos`, `auditoria`, `configuracoes`, `clientes`, `fornecedores`, `projetos`, `centros_custo`, `tags`, `lancamento_tags`, `transferencias`, `baixas`, `recorrencias`, `cartoes`, `faturas`
+**Tabelas:** `meta`, `contextos_financeiros`, `contas`, `categorias`, `lancamentos`, `auditoria`, `configuracoes`, `clientes`, `fornecedores`, `projetos`, `centros_custo`, `tags`, `lancamento_tags`, `transferencias`, `baixas`, `recorrencias`, `cartoes`, `faturas`, `importacoes`, `itens_importacao`, `anexos`, `conciliacoes`
 
-**Indices:** `idx_lancamentos_contexto_data`, `idx_baixas_lancamento`, `idx_clientes_contexto`, `idx_fornecedores_contexto`, `idx_projetos_contexto`, `idx_centros_custo_contexto`, `idx_tags_contexto`, `idx_faturas_cartao`
+**Indices:** `idx_lancamentos_contexto_data`, `idx_baixas_lancamento`, `idx_clientes_contexto`, `idx_fornecedores_contexto`, `idx_projetos_contexto`, `idx_centros_custo_contexto`, `idx_tags_contexto`, `idx_faturas_cartao`, `idx_importacoes_contexto`, `idx_itens_importacao_status`, `idx_itens_importacao_chave`, `idx_anexos_lancamento`, `idx_conciliacoes_conta`
 

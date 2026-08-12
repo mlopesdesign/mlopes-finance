@@ -225,7 +225,7 @@ test('cartões: cadastra, abre fatura, paga sem despesa duplicada', async () => 
   assert.equal(listarFaturas(db, cartaoId).length, 1);
 });
 
-test('migração v2 → v3: cria tabelas de cadastros em banco v0.4.1 simulado', async () => {
+test('migração v2 → head: aplica todas as migrações em banco v0.4.1 simulado', async () => {
   // Simula um banco v0.4.1: so tem tabelas v1+v2
   const SQL = await initSqlJs({ locateFile: () => wasmPath });
   const db = new SQL.Database();
@@ -241,16 +241,21 @@ test('migração v2 → v3: cria tabelas de cadastros em banco v0.4.1 simulado',
            INSERT INTO configuracoes VALUES ('tema', 'dark', 'texto', CURRENT_TIMESTAMP);`);
   // Tabelas v3 NÃO devem existir ainda
   assert.throws(() => db.exec('SELECT * FROM clientes'));
-  // Roda migração
+  // Roda migração cumulativa (v2 → v3 → v4)
   const v = migrar(db);
-  assert.equal(v, 3);
+  assert.equal(v, 4);
   // Agora tabelas v3 existem
   assert.equal(db.exec('SELECT COUNT(*) FROM clientes').length, 1);
   assert.equal(db.exec('SELECT COUNT(*) FROM transferencias').length, 1);
   assert.equal(db.exec('SELECT COUNT(*) FROM baixas').length, 1);
   assert.equal(db.exec('SELECT COUNT(*) FROM cartoes').length, 1);
-  // schema_version foi pra 3
-  assert.equal(db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0].values[0][0], '3');
+  // Tabelas v4 também
+  assert.equal(db.exec('SELECT COUNT(*) FROM importacoes').length, 1);
+  assert.equal(db.exec('SELECT COUNT(*) FROM itens_importacao').length, 1);
+  assert.equal(db.exec('SELECT COUNT(*) FROM anexos').length, 1);
+  assert.equal(db.exec('SELECT COUNT(*) FROM conciliacoes').length, 1);
+  // schema_version foi pra 4
+  assert.equal(db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0].values[0][0], '4');
   // Dados anteriores preservados (configuracoes tema)
   assert.equal(db.exec("SELECT valor FROM configuracoes WHERE chave = 'tema'")[0].values[0][0], 'dark');
 });

@@ -1,9 +1,15 @@
 // MLopes Finance — backup, exportacao e restauracao
 // Pure functions sobre `db` (sql.js). Sem DOM, sem Neutralino.
 
-import initSqlJs from 'sql.js';
-
 const TABELAS_ESSENCIAIS = ['contextos_financeiros', 'contas', 'categorias', 'lancamentos', 'auditoria', 'configuracoes'];
+
+// Resolucao portatil da classe Database do sql.js (browser e node).
+// No navegador, db.constructor ja eh a classe; em testes node tambem.
+function getDatabaseCtor(db) {
+  if (db && db.constructor && typeof db.constructor === 'function') return db.constructor;
+  if (globalThis.initSqlJs && globalThis.initSqlJs.Database) return globalThis.initSqlJs.Database;
+  throw new Error('Classe Database do sql.js nao disponivel.');
+}
 
 /** Cria um backup em memoria. Retorna Uint8Array do .sqlite inteiro. */
 export function criarBackup(db) {
@@ -50,7 +56,8 @@ export function restaurarBackup(db, bytes) {
   if (!(bytes instanceof Uint8Array)) throw new Error('Backup precisa ser Uint8Array.');
   if (bytes.length < 16) throw new Error('Backup muito pequeno, provavelmente invalido.');
   // sql.js permite abrir um novo banco a partir de bytes
-  const novo = new (db.constructor || initSqlJs.Database)(bytes);
+  const Ctor = getDatabaseCtor(db);
+  const novo = new Ctor(bytes);
   // Validar antes de substituir
   const validacao = validarBanco(novo);
   if (!validacao.ok) {
@@ -94,7 +101,8 @@ export function restaurarBackup(db, bytes) {
 export function validarCiclo(db) {
   const antes = radiografar(db);
   const backup = criarBackup(db);
-  const novo = new (db.constructor || initSqlJs.Database)(backup);
+  const Ctor = getDatabaseCtor(db);
+  const novo = new Ctor(backup);
   const depois = radiografar(novo);
   const confere = {};
   for (const t of Object.keys(antes)) {

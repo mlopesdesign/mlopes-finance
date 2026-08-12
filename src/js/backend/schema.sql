@@ -196,3 +196,59 @@ CREATE INDEX IF NOT EXISTS idx_projetos_contexto ON projetos(contexto_id, nome);
 CREATE INDEX IF NOT EXISTS idx_centros_custo_contexto ON centros_custo(contexto_id, nome);
 CREATE INDEX IF NOT EXISTS idx_tags_contexto ON tags(contexto_id, nome);
 CREATE INDEX IF NOT EXISTS idx_faturas_cartao ON faturas(cartao_id, ciclo);
+
+CREATE TABLE IF NOT EXISTS importacoes (
+  id INTEGER PRIMARY KEY,
+  contexto_id INTEGER NOT NULL REFERENCES contextos_financeiros(id),
+  arquivo_origem TEXT NOT NULL,
+  formato TEXT NOT NULL CHECK (formato IN ('ofx','csv')),
+  hash_arquivo TEXT NOT NULL,
+  total_registros INTEGER NOT NULL DEFAULT 0,
+  total_importados INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL CHECK (status IN ('previa','confirmada','cancelada','erro')) DEFAULT 'previa',
+  mapeamento_csv TEXT NOT NULL DEFAULT '',
+  criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS itens_importacao (
+  id INTEGER PRIMARY KEY,
+  importacao_id INTEGER NOT NULL REFERENCES importacoes(id) ON DELETE CASCADE,
+  conta_id INTEGER NOT NULL REFERENCES contas(id),
+  data_transacao TEXT NOT NULL,
+  valor_centavos INTEGER NOT NULL,
+  descricao TEXT NOT NULL,
+  chave_externa TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pendente','importado','ignorado','duplicado')) DEFAULT 'pendente',
+  lancamento_id INTEGER REFERENCES lancamentos(id),
+  criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(importacao_id, chave_externa)
+);
+
+CREATE TABLE IF NOT EXISTS anexos (
+  id INTEGER PRIMARY KEY,
+  contexto_id INTEGER NOT NULL REFERENCES contextos_financeiros(id),
+  lancamento_id INTEGER REFERENCES lancamentos(id) ON DELETE SET NULL,
+  nome_arquivo TEXT NOT NULL,
+  caminho TEXT NOT NULL,
+  mime TEXT NOT NULL DEFAULT 'application/octet-stream',
+  tamanho INTEGER NOT NULL DEFAULT 0,
+  criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS conciliacoes (
+  id INTEGER PRIMARY KEY,
+  contexto_id INTEGER NOT NULL REFERENCES contextos_financeiros(id),
+  conta_id INTEGER NOT NULL REFERENCES contas(id),
+  data_inicio TEXT NOT NULL,
+  data_fim TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('em_andamento','finalizada','cancelada')) DEFAULT 'em_andamento',
+  lancamentos_conciliados INTEGER NOT NULL DEFAULT 0,
+  criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finalizado_em TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_importacoes_contexto ON importacoes(contexto_id, criado_em);
+CREATE INDEX IF NOT EXISTS idx_itens_importacao_status ON itens_importacao(importacao_id, status);
+CREATE INDEX IF NOT EXISTS idx_itens_importacao_chave ON itens_importacao(chave_externa);
+CREATE INDEX IF NOT EXISTS idx_anexos_lancamento ON anexos(lancamento_id);
+CREATE INDEX IF NOT EXISTS idx_conciliacoes_conta ON conciliacoes(conta_id, data_inicio);

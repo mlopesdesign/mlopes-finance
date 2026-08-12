@@ -1,10 +1,12 @@
 export function migrar(db) {
   db.run('CREATE TABLE IF NOT EXISTS meta (chave TEXT PRIMARY KEY, valor TEXT NOT NULL)');
   const current = db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0]?.values[0]?.[0] ?? '0';
-  if (Number(current) < 1) {
+  let destino = Number(current) || 0;
+  if (destino < 1) {
     db.run("INSERT OR REPLACE INTO meta (chave, valor) VALUES ('schema_version', '1')");
+    destino = 1;
   }
-  if (Number(current) < 2) {
+  if (destino < 2) {
     db.run(`CREATE TABLE IF NOT EXISTS configuracoes (
       chave TEXT PRIMARY KEY,
       valor TEXT NOT NULL,
@@ -16,8 +18,9 @@ export function migrar(db) {
       db.run(`INSERT OR IGNORE INTO configuracoes (chave, valor, tipo) VALUES (?, ?, ?)`, [chave, valor, tipo]);
     }
     db.run("INSERT OR REPLACE INTO meta (chave, valor) VALUES ('schema_version', '2')");
+    destino = 2;
   }
-  if (Number(current) < 3) {
+  if (destino < 3) {
     // v0.5.0 — cadastros, transferencias, baixas, recorrencias, cartoes, faturas
     const tabelasV3 = [
       `CREATE TABLE IF NOT EXISTS clientes (
@@ -93,7 +96,6 @@ export function migrar(db) {
       )`,
     ];
     for (const sql of tabelasV3) db.run(sql);
-    // Indices
     const indicesV3 = [
       'CREATE INDEX IF NOT EXISTS idx_baixas_lancamento ON baixas(lancamento_id)',
       'CREATE INDEX IF NOT EXISTS idx_clientes_contexto ON clientes(contexto_id, nome)',
@@ -105,6 +107,56 @@ export function migrar(db) {
     ];
     for (const sql of indicesV3) db.run(sql);
     db.run("INSERT OR REPLACE INTO meta (chave, valor) VALUES ('schema_version', '3')");
+    destino = 3;
   }
-  return 3;
+  if (destino < 4) {
+    // v0.6.0 — importacao OFX/CSV, anexos, conciliacoes
+    const tabelasV4 = [
+      `CREATE TABLE IF NOT EXISTS importacoes (
+        id INTEGER PRIMARY KEY, contexto_id INTEGER NOT NULL REFERENCES contextos_financeiros(id),
+        arquivo_origem TEXT NOT NULL,
+        formato TEXT NOT NULL CHECK (formato IN ('ofx','csv')),
+        hash_arquivo TEXT NOT NULL, total_registros INTEGER NOT NULL DEFAULT 0,
+        total_importados INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL CHECK (status IN ('previa','confirmada','cancelada','erro')) DEFAULT 'previa',
+        mapeamento_csv TEXT NOT NULL DEFAULT '',
+        criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS itens_importacao (
+        id INTEGER PRIMARY KEY, importacao_id INTEGER NOT NULL REFERENCES importacoes(id) ON DELETE CASCADE,
+        conta_id INTEGER NOT NULL REFERENCES contas(id), data_transacao TEXT NOT NULL,
+        valor_centavos INTEGER NOT NULL, descricao TEXT NOT NULL, chave_externa TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pendente','importado','ignorado','duplicado')) DEFAULT 'pendente',
+        lancamento_id INTEGER REFERENCES lancamentos(id),
+        criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(importacao_id, chave_externa)
+      )`,
+      `CREATE TABLE IF NOT EXISTS anexos (
+        id INTEGER PRIMARY KEY, contexto_id INTEGER NOT NULL REFERENCES contextos_financeiros(id),
+        lancamento_id INTEGER REFERENCES lancamentos(id) ON DELETE SET NULL,
+        nome_arquivo TEXT NOT NULL, caminho TEXT NOT NULL,
+        mime TEXT NOT NULL DEFAULT 'application/octet-stream',
+        tamanho INTEGER NOT NULL DEFAULT 0, criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS conciliacoes (
+        id INTEGER PRIMARY KEY, contexto_id INTEGER NOT NULL REFERENCES contextos_financeiros(id),
+        conta_id INTEGER NOT NULL REFERENCES contas(id), data_inicio TEXT NOT NULL, data_fim TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('em_andamento','finalizada','cancelada')) DEFAULT 'em_andamento',
+        lancamentos_conciliados INTEGER NOT NULL DEFAULT 0,
+        criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, finalizado_em TEXT
+      )`,
+    ];
+    for (const sql of tabelasV4) db.run(sql);
+    const indicesV4 = [
+      'CREATE INDEX IF NOT EXISTS idx_importacoes_contexto ON importacoes(contexto_id, criado_em)',
+      'CREATE INDEX IF NOT EXISTS idx_itens_importacao_status ON itens_importacao(importacao_id, status)',
+      'CREATE INDEX IF NOT EXISTS idx_itens_importacao_chave ON itens_importacao(chave_externa)',
+      'CREATE INDEX IF NOT EXISTS idx_anexos_lancamento ON anexos(lancamento_id)',
+      'CREATE INDEX IF NOT EXISTS idx_conciliacoes_conta ON conciliacoes(conta_id, data_inicio)',
+    ];
+    for (const sql of indicesV4) db.run(sql);
+    db.run("INSERT OR REPLACE INTO meta (chave, valor) VALUES ('schema_version', '4')");
+    destino = 4;
+  }
+  return destino;
 }

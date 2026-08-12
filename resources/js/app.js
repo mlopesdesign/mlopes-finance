@@ -5,26 +5,112 @@ import { aplicarTemaDoBanco, DEFAULTS as TEMA_DEFAULTS } from './tema.js';
 import { renderConfiguracoes } from './telas/configuracoes.js';
 import { renderCadastroGenerico } from './telas/cadastros-generico.js';
 
-const APP_VERSION = '0.5.0';
+const APP_VERSION = '0.5.2';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = [];
 const $ = (s) => document.querySelector(s); const app = $('#app');
+const statusEl = () => document.getElementById('status');
+const setStatus = (msg) => { const s = statusEl(); if (s) s.textContent = msg; if (typeof document !== 'undefined') document.title = 'MLopes Finance — ' + msg; };
+
+// Log file persistente: captura tudo o que acontece no boot
+const _logBuf = [];
+function log(...a) {
+  const stamp = new Date().toISOString().slice(11, 23);
+  const msg = `[${stamp}] ` + a.map((x) => { try { return typeof x === 'string' ? x : JSON.stringify(x); } catch { return String(x); } }).join(' ');
+  _logBuf.push(msg);
+  try { console.log('[boot]', ...a); } catch { /* noop */ }
+  // Persiste o log a cada 5 entradas via Neutralino (se disponivel) ou LocalStorage
+  if (_logBuf.length % 5 === 0) flushLog();
+}
+function flushLog() {
+  const payload = _logBuf.join('\n') + '\n';
+  try { localStorage.setItem('mlopes-boot-log', payload); } catch { /* noop */ }
+  if (globalThis.Neutralino?.filesystem) {
+    try {
+      const path = `${globalThis.NL_APPDATA || (globalThis.NL_PATH || '')}/mlopes-boot.log`;
+      const enc = new TextEncoder();
+      globalThis.Neutralino.filesystem.writeBinaryFile(path, enc.encode(payload)).catch(() => {});
+    } catch { /* noop */ }
+  }
+}
+
+// Captura erros globais nao tratados (import errors, etc)
+window.addEventListener('error', (ev) => {
+  log('window.error:', ev.message, ev.filename, ev.lineno + ':' + ev.colno);
+  if (ev.error && ev.error.stack) log('  stack:', ev.error.stack);
+  flushLog();
+  if (app) app.innerHTML = `<div class="error"><strong>Erro de carregamento</strong><br>${(ev.message || '').replaceAll('<', '&lt;')}<br><small>${(ev.filename || '').replaceAll('<', '&lt;')}:${ev.lineno}</small></div>`;
+});
+window.addEventListener('unhandledrejection', (ev) => {
+  log('unhandledrejection:', ev.reason?.message || ev.reason);
+  if (ev.reason?.stack) log('  stack:', ev.reason.stack);
+  flushLog();
+});
+
 const money = (c) => (Number(c) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const rows = (data) => data.map((r) => `<tr>${r.map((v) => `<td>${String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;')}</td>`).join('')}</tr>`).join('');
 
+log('app.js modulo carregado, Neutralino=', !!globalThis.Neutralino, 'NL_PORT=', globalThis.NL_PORT);
+
+// Helper: timeout em promise (rejeita se demorar demais)
+function comTimeout(promise, ms, label) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`Timeout em ${label} (${ms}ms)`)), ms);
+    promise.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
 async function boot() {
-  Neutralino.init(); await new Promise((resolve) => setTimeout(resolve, 500));
-  const SQL = await globalThis.initSqlJs({ locateFile: (f) => `js/vendor/${f}` });
-  const schema = await (await fetch('js/backend/schema.sql')).text();
-  const local = await abrirBancoLocal(SQL, schema);
+  setStatus('Inicializando runtime nativo...');
+  log('boot start');
+  if (!globalThis.Neutralino) {
+    const msg = 'Neutralino nao disponivel. Abra pelo atalho instalado, nao pelo navegador.';
+    log('FATAL:', msg);
+    if (app) app.innerHTML = `<div class="error">${msg}</div>`;
+    setStatus('Falha: ' + msg);
+    return;
+  }
+  // Inicializa runtime nativo
+  try { Neutralino.init(); } catch (e) { log('Neutralino.init threw:', e); }
+  await new Promise((r) => setTimeout(r, 300));
+  log('Neutralino initialized, port=', globalThis.NL_PORT);
+
+  setStatus('Carregando biblioteca do banco...');
+  if (typeof globalThis.initSqlJs !== 'function') {
+    const msg = 'initSqlJs nao foi carregado. Verifique js/vendor/sql-wasm.js.';
+    log('FATAL:', msg);
+    if (app) app.innerHTML = `<div class="error">${msg}</div>`;
+    setStatus('Falha: ' + msg);
+    return;
+  }
+  const SQL = await comTimeout(globalThis.initSqlJs({ locateFile: (f) => `js/vendor/${f}` }), 15000, 'initSqlJs');
+  log('initSqlJs loaded');
+
+  setStatus('Lendo schema...');
+  const schemaResp = await comTimeout(fetch('js/backend/schema.sql'), 10000, 'fetch schema');
+  if (!schemaResp.ok) throw new Error('schema.sql HTTP ' + schemaResp.status);
+  const schema = await schemaResp.text();
+  log('schema loaded,', schema.length, 'chars');
+
+  setStatus('Abrindo banco local...');
+  const local = await comTimeout(abrirBancoLocal(SQL, schema), 15000, 'abrirBancoLocal');
+  log('banco aberto em', local.arquivo);
+
+  setStatus('Verificando migracoes...');
   const versaoAntes = Number(local.db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0]?.values?.[0]?.[0] ?? '0');
   migrar(local.db);
   const versaoDepois = Number(local.db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0]?.values?.[0]?.[0] ?? '0');
   if (versaoDepois > versaoAntes) await local.persistir();
+  log('migracao: v' + versaoAntes + ' -> v' + versaoDepois);
+
+  setStatus('Aplicando tema...');
   aplicarTemaDoBanco(local.db);
   api = criarApi(local.db, () => local.persistir());
   const contexts = api('contextos:listar');
   if (!contexts.length) { contextoId = api('contextos:criar', { nome: 'Meu contexto', descricao: 'Contexto criado nesta instalação' }); await local.persistir(); } else contextoId = contexts[0][0];
+  log('contextoId=', contextoId);
+
+  setStatus('Pronto');
   renderHeader(local.arquivo);
   document.querySelectorAll('.nav-button').forEach((b) => b.addEventListener('click', () => {
     document.querySelectorAll('.nav-button').forEach((x) => x.classList.remove('active'));
@@ -32,6 +118,7 @@ async function boot() {
     render(b.dataset.view);
   }));
   render('dashboard');
+  log('boot done');
 }
 
 function renderHeader(dbPath) {
@@ -152,4 +239,11 @@ function renderBaixas() {
   document.querySelectorAll('button[data-baixa]').forEach(btn => btn.onclick = () => formBaixa(Number(btn.dataset.baixa)));
 }
 
-boot().catch((e) => { const s = document.getElementById('status'); if (s) s.textContent = 'Falha ao abrir o banco'; const a = document.getElementById('app'); if (a) a.innerHTML = `<div class="error">${e.message}</div>`; });
+boot().catch((e) => {
+  log('BOOT ERRO:', e?.message || e);
+  if (e?.stack) log('  stack:', e.stack);
+  flushLog();
+  console.error('[boot] ERRO:', e);
+  setStatus('Falha: ' + (e?.message || e));
+  if (app) app.innerHTML = `<div class="error"><strong>Falha ao iniciar</strong><br>${String(e?.message || e).replaceAll('<', '&lt;')}<br><small>Log salvo em mlopes-boot.log (mesma pasta do banco).</small></div>`;
+});

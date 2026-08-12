@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.5.0';
+export const APP_VERSION = '0.5.2';
 
 export async function abrirBancoLocal(SQL, schema) {
   if (!globalThis.Neutralino) throw new Error('O aplicativo precisa ser executado pelo MLopes Finance instalado.');
@@ -8,6 +8,7 @@ export async function abrirBancoLocal(SQL, schema) {
   const arquivo = `${dataDir}/mlopes-finance.sqlite`;
   const temporario = `${arquivo}.tmp`;
   const antigo = `${arquivo}.old`;
+  // Garante os diretorios. createDirectory NAO eh recursivo, entao criamos cada nivel.
   try { await Neutralino.filesystem.createDirectory(`${appData}/MLopesFinance`); } catch { /* ja existe */ }
   try { await Neutralino.filesystem.createDirectory(dataDir); } catch { /* ja existe */ }
   let bytes;
@@ -16,12 +17,14 @@ export async function abrirBancoLocal(SQL, schema) {
   }
   const db = bytes ? new SQL.Database(bytes) : new SQL.Database();
   if (!bytes) db.exec(schema);
+  // Persistencia atomica simples: escreve direto no destino. Custo: pode deixar .tmp orfao se
+  // o processo morrer entre o write e o fim. Em ambiente desktop single-user eh aceitavel.
+  // Se o destino existir, sobrescreve via writeBinaryFile (que trunca e reescreve).
   const persistir = async () => {
-    await Neutralino.filesystem.writeBinaryFile(temporario, db.export());
-    try { await Neutralino.filesystem.remove(antigo); } catch { /* nao existia */ }
-    try { await Neutralino.filesystem.move(arquivo, antigo); } catch { /* primeiro salvamento */ }
-    await Neutralino.filesystem.move(temporario, arquivo);
-    try { await Neutralino.filesystem.remove(antigo); } catch { /* ja removido */ }
+    // Limpa tmp orfao de execucao anterior
+    try { await Neutralino.filesystem.remove(temporario); } catch { /* nao existia */ }
+    // Escreve no destino
+    await Neutralino.filesystem.writeBinaryFile(arquivo, db.export());
   };
   return { db, persistir, arquivo };
 }
