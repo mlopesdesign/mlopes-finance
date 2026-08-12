@@ -1,18 +1,198 @@
-# Manual do usuário
+# Manual do Usuário — MLopes Finance v0.5.0
 
-## Primeiros passos
+Bem-vindo ao MLopes Finance, o sistema de gestão financeira pessoal e empresarial para Windows 10/11, local-first e auditável. Este manual cobre a versão 0.5.0.
 
-1. Abra o MLopes Finance.
-2. Cadastre uma conta em **Contas**.
-3. Cadastre categorias em **Categorias**.
-4. Registre receitas e despesas em **Lançamentos**.
-5. Confira o saldo em **Visão geral**.
+---
 
-Os dados são locais e ficam em `%APPDATA%\MLopesFinance\dados`.
+## 1. O que é o MLopes Finance
 
-## Problemas comuns
+O MLopes Finance é um aplicativo de gestão financeira que roda 100% local no seu computador. Seus dados ficam em `%APPDATA%\MLopesFinance\dados\mlopes-finance.sqlite` e nunca saem da sua máquina.
 
-| Problema | Solução |
+**O que ele faz:**
+
+- Lançamentos de receitas, despesas e transferências entre contas.
+- Cadastros editáveis de contas, clientes, fornecedores, projetos, centros de custo, tags e categorias.
+- Baixas parciais e totais com controle de saldo.
+- Recorrências (mensal, semanal, anual etc).
+- Cartões de crédito com faturas por ciclo.
+- Tema claro/escuro e cor da marca customizáveis.
+- Configurações persistentes por instalação.
+
+**O que ele NÃO faz nesta versão (próximas sprints):**
+
+- Conciliação bancária com extrato OFX/CSV.
+- Fluxo comercial completo (orçamento → aprovação → contrato → recebimentos).
+- Relatórios gerenciais com comparativos temporais.
+- Integração fiscal NFS-e.
+- Sincronização na nuvem.
+
+---
+
+## 2. Instalação e primeira execução
+
+1. Execute o instalador `MLopes Finance Setup.exe` baixado do seu fornecedor.
+2. Siga o assistente. O padrão instala em `%LOCALAPPDATA%\Programs\MLopes Finance`.
+3. Ao final, o atalho "MLopes Finance" aparece no menu Iniciar e (opcional) na área de trabalho.
+4. Clique no atalho. A janela 1280×820 abre mostrando a **Visão geral** do contexto financeiro padrão ("Meu contexto").
+
+**Importante:** o banco de dados é criado automaticamente em `%APPDATA%\MLopesFinance\dados\mlopes-finance.sqlite` na primeira execução. Apagar este arquivo apaga todos os seus dados — só faça backup antes.
+
+---
+
+## 3. Conceitos fundamentais
+
+### 3.1 Contexto financeiro
+
+Um **contexto** é uma divisão lógica do seu dinheiro: "Pessoal", "ML Lopes Design", "Filial SP", "Projeto Apartamento", etc. Cada lançamento, conta, cliente ou projeto pertence a UM contexto. Isso impede misturar saldos de empresas ou pessoas diferentes.
+
+A v0.5.0 vem com um contexto padrão "Meu contexto". Para criar mais, use a tela de configurações (Fase 3) ou o backend direto.
+
+### 3.2 Valor monetário
+
+Todo valor é armazenado em **centavos inteiros** (Regra 4 do plano). Internamente o app usa `valor_centavos` como INTEGER. Na interface, você digita em reais com vírgula ou ponto, e o app converte.
+
+### 3.3 Data
+
+Toda data operacional usa o formato `YYYY-MM-DD` (ISO 8601). Exemplo: `2026-08-12`. Não digite `12/08/2026` — o app rejeita.
+
+### 3.4 Lançamentos
+
+Um **lançamento** é uma movimentação financeira: receita (entrou dinheiro), despesa (saiu dinheiro) ou transferência (movido entre contas do mesmo contexto).
+
+Cada lançamento tem, no mínimo:
+
+- **Contexto** financeiro.
+- **Conta** (qual conta bancária / cartão / investimento foi afetado).
+- **Natureza** (receita ou despesa; transferência é gerada pelo fluxo "Transferir entre contas").
+- **Valor** positivo em centavos.
+- **Data de competência** (quando aconteceu, `YYYY-MM-DD`).
+- **Descrição** obrigatória.
+
+Opcionalmente: categoria, cliente, projeto, centro de custo, data de vencimento, observações, anexo.
+
+### 3.5 Status do lançamento
+
+- **Aberto**: lançado mas ainda não pago.
+- **Conciliado**: pago (manualmente ou via baixa total) ou marcado como tal.
+- **Estornado**: anulado por estorno (futuro).
+
+### 3.6 Saldo em aberto
+
+Para cada lançamento, o app calcula `valor_original - soma(baixas)`. A coluna "Saldo" na tela de Lançamentos mostra esse valor. Quando o saldo zera, o status vira `conciliado` automaticamente.
+
+---
+
+## 4. Navegação
+
+A barra lateral esquerda tem 11 itens + Configurações no rodapé:
+
+| Item | O que faz |
 |---|---|
-| Não consigo registrar lançamento | Cadastre uma conta antes. |
-| O aplicativo não abre a tela do produto | Reinstale usando o instalador da mesma versão e informe o erro registrado. |
+| **Visão geral** | Dashboard com 8 cards (Receitas, Despesas, Saldo, Contas, Clientes, Projetos, Centros de custo, Tags) + lembrete de "Próximo passo". |
+| **Lançamentos** | Lista paginada de lançamentos, com botão "Novo lançamento", "Transferir entre contas" e botão de saldo para abrir baixas. |
+| **Transferências** | Lista de débitos+créditos vinculados entre contas. |
+| **Baixas e saldos** | Lista de lançamentos não-estornados com saldo em aberto e botão "Lançar baixa". |
+| **Contas** | Cadastro de contas (bancária, cartão, investimento). |
+| **Clientes** | Cadastro de clientes. |
+| **Fornecedores** | Cadastro de fornecedores. |
+| **Projetos** | Cadastro de projetos (vinculáveis a clientes). |
+| **Centros de custo** | Cadastro de centros de custo. |
+| **Tags** | Cadastro de tags (vinculáveis a lançamentos). |
+| **Categorias** | Cadastro de categorias (receita, despesa ou ambas). |
+| **Configurações** | Aparência (tema, cor da marca), Identidade (nome, locale), Financeiro (moeda), Avançado (reset). |
+
+---
+
+## 5. Fluxos comuns
+
+### 5.1 Cadastrar uma conta
+
+1. Sidebar → **Contas** → **Nova conta**.
+2. Preencha: Nome (obrigatório), Tipo (`Conta bancária` / `Cartão de crédito` / `Investimento`), Saldo inicial (R$).
+3. **Salvar**. A conta aparece na lista.
+
+### 5.2 Cadastrar um cliente
+
+1. Sidebar → **Clientes** → **Novo**.
+2. Preencha: Nome (obrigatório), Documento (CPF/CNPJ), E-mail, Telefone, Observações.
+3. **Salvar**.
+
+### 5.3 Lançar uma despesa simples
+
+1. Sidebar → **Lançamentos** → **Novo lançamento**.
+2. Descrição (obrigatório), Natureza = "Despesa", Valor (R$, use ponto ou vírgula), Data (calendário).
+3. Conta: selecione a conta bancária que será debitada.
+4. Categoria / Cliente / Projeto / Centro de custo / Tag: opcionais.
+5. **Salvar**. A despesa aparece na lista com status "aberto" e saldo = valor total.
+
+### 5.4 Transferir entre contas
+
+1. Sidebar → **Lançamentos** → **Transferir entre contas**.
+2. Conta origem, Conta destino (devem ser diferentes), Valor, Data, Descrição.
+3. **Transferir**. O app gera **dois lançamentos** vinculados (um débito na origem, um crédito no destino) e registra na tabela `transferencias` com referência cruzada.
+
+### 5.5 Lançar uma baixa (pagamento parcial ou total)
+
+1. Na lista de Lançamentos, clique no valor da coluna "Saldo" do lançamento que quer pagar.
+2. OU vá em **Baixas e saldos** e clique em "Lançar baixa" na linha.
+3. Valor (R$, default = saldo restante), Data, Forma (pix, boleto, dinheiro...), Observações.
+4. **Registrar baixa**. O saldo é atualizado. Se quitar o saldo, o status vira `conciliado`.
+
+### 5.6 Alternar tema (claro/escuro)
+
+1. **Pill** "☾ Escuro" (ou "☀ Claro") no topo da janela, ao lado de "VERSÃO 0.5.0".
+2. Clique. A página recarrega no outro tema. A escolha é salva no banco.
+
+### 5.7 Mudar a cor da marca
+
+1. Sidebar → **Configurações** → aba "Aparência".
+2. Clique no color picker "Cor da marca". A cor é aplicada em tempo real.
+3. **Salvar alterações** (botão no rodapé). Persistido.
+
+### 5.8 Configurar nome de exibição
+
+1. Sidebar → **Configurações** → aba "Identidade".
+2. Mude "Nome de exibição" (ex: "MLopes Finance - Pessoal"). Aparece no header.
+3. **Salvar alterações**.
+
+---
+
+## 6. Boas práticas
+
+- **Faça backup do banco** regularmente: copie `%APPDATA%\MLopesFinance\dados\mlopes-finance.sqlite` para um lugar seguro. A v0.5.0 ainda não tem botão de backup na UI (próxima sprint), mas o arquivo é um SQLite padrão, legível por qualquer cliente SQLite.
+- **Nunca edite o `.sqlite` com ferramentas externas enquanto o app está aberto**. Pode corromper.
+- **Concilie mensalmente**: use a tela de Lançamentos, filtre por mês, e marque os pagos.
+- **Use contextos separados para PJ e PF** para não misturar saldos.
+- **Não apague cadastros com histórico** — o app tem campo `ativo` para inativar sem perder.
+
+---
+
+## 7. Problemas comuns
+
+| Sintoma | Causa provável | Solução |
+|---|---|---|
+| App abre mas fica na tela "Inicializando banco local..." | Cache do WebView2 corrompido | Feche o app, apague `%LOCALAPPDATA%\MLopes Design\` (cache do WebView2) e `%APPDATA%\com.mlopesdesign.mlopesfinance`, reabra. |
+| "Falha ao abrir o banco" | Banco corrompido | Copie o `.sqlite.old` (se existir) para `.sqlite` e reabra. Senão, delete o `.sqlite` (perde os dados) e reabra. |
+| Caracteres com acento errados | Encoding da página | Verifique se o `<meta charset="utf-8">` está presente no `index.html` (deve estar na linha 4). Se estiver, force recarregue com Ctrl+F5. |
+| Instalador não roda | SmartScreen bloqueando | Clique em "Mais informações" → "Executar mesmo assim". Assinatura digital virá em release futura. |
+| Botão de baixa não aparece | Lançamento já está estornado | Use a tela "Baixas e saldos" para ver todos os com saldo. |
+
+---
+
+## 8. Onde os dados ficam
+
+| Item | Caminho |
+|---|---|
+| Banco SQLite | `%APPDATA%\MLopesFinance\dados\mlopes-finance.sqlite` |
+| Backup .old (última versão antes da atual) | mesmo dir, `mlopes-finance.sqlite.old` |
+| Temp de gravação (durante save) | mesmo dir, `mlopes-finance.sqlite.tmp` |
+| Cache do WebView2 | `%LOCALAPPDATA%\MLopes Design\` |
+| Logs (apenas dev) | mesmo dir, `app.log` |
+
+**Não apague o `.sqlite` sem backup.**
+
+---
+
+## 9. Versão
+
+Este manual cobre a v0.5.0. Funcionalidades das próximas versões (conciliação, comercial, relatórios avançados) virão em releases futuros. Veja `HISTORICO-DE-VERSOES.md` no diretório do projeto.

@@ -1,4 +1,4 @@
-#define AppVersion "0.4.1"
+#define AppVersion "0.5.0"
 #define AppName "MLopes Finance"
 #define AppPublisher "ML Lopes Design"
 #define AppExeName "MLopesFinance.exe"
@@ -28,9 +28,10 @@ Name: "{autoprograms}\MLopes Finance"; Filename: "{app}\{#AppExeName}"; IconFile
 Name: "{autodesktop}\MLopes Finance"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Tasks]
-Name: "desktopicon"; Description: "Criar atalho na ÃƒÂ¡rea de trabalho"; GroupDescription: "Atalhos adicionais:"
+Name: "desktopicon"; Description: "Criar atalho na ÃƒÆ’Ã‚Â¡rea de trabalho"; GroupDescription: "Atalhos adicionais:"
 
 [Dirs]
 Name: "{userappdata}\MLopesFinance\dados"
+
 
 

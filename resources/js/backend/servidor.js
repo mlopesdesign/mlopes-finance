@@ -1,6 +1,12 @@
 import { criarCategoria, criarConta, criarContexto } from './core/financeiro.js';
 import { conciliarLancamento, criarLancamento, resumo } from './core/lancamentos.js';
 import { getAllConfig, getConfig, setConfig, deleteConfig, resetConfig } from './core/configuracoes.js';
+import { criarBackup, radiografar, restaurarBackup, validarCiclo } from './core/backup.js';
+import { criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento } from './core/cadastros.js';
+import { criarTransferencia, listarTransferencias } from './core/transferencias.js';
+import { registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa } from './core/baixas.js';
+import { criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias } from './core/recorrencias.js';
+import { criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura } from './core/cartoes.js';
 
 export function criarApi(db, persistir = () => {}) {
   const rotas = {
@@ -10,15 +16,62 @@ export function criarApi(db, persistir = () => {}) {
     'contas:criar': (d) => { const id = criarConta(db, d); persistir(); return id; },
     'categorias:listar': (d) => db.exec('SELECT * FROM categorias WHERE contexto_id = ? AND ativo = 1 ORDER BY nome', [d.contextoId])[0]?.values ?? [],
     'categorias:criar': (d) => { const id = criarCategoria(db, d); persistir(); return id; },
-    'lancamentos:listar': (d) => db.exec(`SELECT l.*, c.nome conta_nome, ca.nome categoria_nome FROM lancamentos l JOIN contas c ON c.id = l.conta_id LEFT JOIN categorias ca ON ca.id = l.categoria_id WHERE l.contexto_id = ? ORDER BY l.data_competencia DESC, l.id DESC`, [d.contextoId])[0]?.values ?? [],
+    'lancamentos:listar': (d) => db.exec(`SELECT l.*, c.nome conta_nome, ca.nome categoria_nome, cl.nome cliente_nome, p.nome projeto_nome, cc.nome centro_custo_nome FROM lancamentos l LEFT JOIN contas c ON c.id = l.conta_id LEFT JOIN categorias ca ON ca.id = l.categoria_id LEFT JOIN clientes cl ON cl.id = l.cliente_id LEFT JOIN projetos p ON p.id = l.projeto_id LEFT JOIN centros_custo cc ON cc.id = l.centro_custo_id WHERE l.contexto_id = ? ORDER BY l.data_competencia DESC, l.id DESC`, [d.contextoId])[0]?.values ?? [],
     'lancamentos:criar': (d) => { const id = criarLancamento(db, d); persistir(); return id; },
     'lancamentos:conciliar': (d) => { const out = conciliarLancamento(db, d.id); persistir(); return out; },
     'dashboard:resumo': (d) => resumo(db, d.contextoId),
+
+    // Configuracoes
     'configuracoes:listar': () => getAllConfig(db),
     'configuracoes:obter': (d) => getConfig(db, d.chave),
     'configuracoes:salvar': (d) => { const out = setConfig(db, d.chave, d.valor, d.tipo || 'texto'); persistir(); return out; },
     'configuracoes:excluir': (d) => { const out = deleteConfig(db, d.chave); persistir(); return out; },
     'configuracoes:resetar': () => { const out = resetConfig(db); persistir(); return out; },
+
+    // Cadastros
+    'clientes:listar': (d) => listarClientes(db, d.contextoId),
+    'clientes:criar': (d) => { const id = criarCliente(db, d); persistir(); return id; },
+    'clientes:atualizar': (d) => { atualizarCliente(db, d.id, d); persistir(); return true; },
+    'fornecedores:listar': (d) => listarFornecedores(db, d.contextoId),
+    'fornecedores:criar': (d) => { const id = criarFornecedor(db, d); persistir(); return id; },
+    'fornecedores:atualizar': (d) => { atualizarFornecedor(db, d.id, d); persistir(); return true; },
+    'projetos:listar': (d) => listarProjetos(db, d.contextoId),
+    'projetos:criar': (d) => { const id = criarProjeto(db, d); persistir(); return id; },
+    'centros_custo:listar': (d) => listarCentrosCusto(db, d.contextoId),
+    'centos_custo:criar': (d) => { const id = criarCentroCusto(db, d); persistir(); return id; },
+    'tags:listar': (d) => listarTags(db, d.contextoId),
+    'tags:criar': (d) => { const id = criarTag(db, d); persistir(); return id; },
+    'lancamento_tags:vincular': (d) => { const ok = vincularTagLancamento(db, d.lancamentoId, d.tagId); persistir(); return ok; },
+    'lancamento_tags:listar': (d) => listarTagsDoLancamento(db, d.lancamentoId),
+
+    // Transferencias
+    'transferencias:criar': (d) => { const out = criarTransferencia(db, d); persistir(); return out; },
+    'transferencias:listar': (d) => listarTransferencias(db, d.contextoId),
+
+    // Baixas
+    'baixas:registrar': (d) => { const out = registrarBaixa(db, d); persistir(); return out; },
+    'baixas:listar': (d) => listarBaixas(db, d.lancamentoId),
+    'baixas:saldo': (d) => saldoEmAberto(db, d.lancamentoId),
+    'baixas:remover': (d) => { removerBaixa(db, d.id); persistir(); return true; },
+
+    // Recorrencias
+    'recorrencias:criar': (d) => { const id = criarRecorrencia(db, d); persistir(); return id; },
+    'recorrencias:gerar': (d) => { const out = gerarProximaOcorrencia(db, d.id); persistir(); return out; },
+    'recorrencias:listar': (d) => listarRecorrencias(db, d.contextoId),
+
+    // Cartoes e faturas
+    'cartoes:criar': (d) => { const id = criarCartao(db, d); persistir(); return id; },
+    'cartoes:listar': (d) => listarCartoes(db, d.contextoId),
+    'faturas:abrir': (d) => { const id = abrirFatura(db, d); persistir(); return id; },
+    'faturas:pagar': (d) => { const out = pagarFatura(db, d); persistir(); return out; },
+    'faturas:listar': (d) => listarFaturas(db, d.cartaoId),
+    'faturas:adicionarLancamento': (d) => { adicionarLancamentoNaFatura(db, d.faturaId, d.valorCentavos); persistir(); return true; },
+
+    // Backup
+    'backup:radiografar': () => radiografar(db),
+    'backup:validarCiclo': () => validarCiclo(db),
+    'backup:exportar': () => criarBackup(db),
+    'backup:restaurar': (d) => { const r = restaurarBackup(db, d.bytes); persistir(); return r; },
   };
-  return (canal, dados = {}) => { if (!rotas[canal]) throw new Error(`Canal não autorizado: ${canal}`); return rotas[canal](dados); };
+  return (canal, dados = {}) => { if (!rotas[canal]) throw new Error(`Canal nao autorizado: ${canal}`); return rotas[canal](dados); };
 }

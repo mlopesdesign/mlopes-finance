@@ -1,0 +1,142 @@
+# GRAPHIFY — Mapa técnico do MLopes Finance
+
+> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-12T05:35:59.963Z.
+> Não editar manualmente. Fonte da verdade: `src/` e `tools/`.
+
+## Resumo
+
+| Categoria | Quantidade |
+|---|---|
+| core | 9 |
+| tela | 2 |
+| backend | 4 |
+| sql | 1 |
+| vendor | 0 |
+| tool | 3 |
+
+Total: 21 módulos.
+
+## core (9)
+
+### `src/js/backend/core/backup.js`
+
+MLopes Finance — backup, exportacao e restauracao
+
+**Exports:** `criarBackup`, `exportarSQLite`, `radiografar`, `validarBanco`, `restaurarBackup`, `validarCiclo`
+
+### `src/js/backend/core/baixas.js`
+
+MLopes Finance — baixas (pagamentos) de lancamentos
+
+**Exports:** `saldoEmAberto`, `registrarBaixa`, `listarBaixas`, `removerBaixa`
+
+**Imports:** validarData, validarValorCentavos ← `./financeiro.js`
+
+### `src/js/backend/core/cadastros.js`
+
+MLopes Finance — cadastros editaveis (clientes, fornecedores, projetos, centros_custo, tags)
+
+**Exports:** `criarCliente`, `listarClientes`, `atualizarCliente`, `criarFornecedor`, `listarFornecedores`, `atualizarFornecedor`, `criarProjeto`, `listarProjetos`, `atualizarProjeto`, `criarCentroCusto`, `listarCentrosCusto`, `criarTag`, `listarTags`, `vincularTagLancamento`, `listarTagsDoLancamento`
+
+### `src/js/backend/core/cartoes.js`
+
+MLopes Finance — cartoes de credito e faturas
+
+**Exports:** `criarCartao`, `listarCartoes`, `calcularCiclo`, `abrirFatura`, `adicionarLancamentoNaFatura`, `pagarFatura`, `listarFaturas`
+
+### `src/js/backend/core/configuracoes.js`
+
+MLopes Finance — backend de configurações
+
+**Exports:** `getConfig`, `setConfig`, `getAllConfig`, `deleteConfig`, `resetConfig`
+
+### `src/js/backend/core/financeiro.js`
+
+**Exports:** `validarValorCentavos`, `validarData`, `criarContexto`, `criarConta`, `criarCategoria`
+
+### `src/js/backend/core/lancamentos.js`
+
+**Exports:** `criarLancamento`, `conciliarLancamento`, `resumo`
+
+**Imports:** validarData, validarValorCentavos ← `./financeiro.js`
+
+### `src/js/backend/core/recorrencias.js`
+
+MLopes Finance — recorrencias
+
+**Exports:** `criarRecorrencia`, `gerarProximaOcorrencia`, `listarRecorrencias`
+
+**Imports:** criarLancamento ← `./lancamentos.js`
+
+### `src/js/backend/core/transferencias.js`
+
+MLopes Finance — transferencias entre contas do mesmo contexto
+
+**Exports:** `criarTransferencia`, `listarTransferencias`
+
+**Imports:** validarData, validarValorCentavos ← `./financeiro.js`; criarLancamento ← `./lancamentos.js`
+
+## backend (4)
+
+### `src/js/backend/ambiente.js`
+
+**Exports:** `APP_VERSION`, `abrirBancoLocal`
+
+### `src/js/backend/db.js`
+
+**Exports:** `abrirBanco`, `salvarBancoSeguro`
+
+**Imports:** fileURLToPath ← `node:url`
+
+### `src/js/backend/migracoes.js`
+
+**Exports:** `migrar`
+
+### `src/js/backend/servidor.js`
+
+**Exports:** `criarApi`
+
+**Imports:** criarCategoria, criarConta, criarContexto ← `./core/financeiro.js`; conciliarLancamento, criarLancamento, resumo ← `./core/lancamentos.js`; getAllConfig, getConfig, setConfig, deleteConfig, resetConfig ← `./core/configuracoes.js`; criarBackup, radiografar, restaurarBackup, validarCiclo ← `./core/backup.js`; criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento ← `./core/cadastros.js`; criarTransferencia, listarTransferencias ← `./core/transferencias.js`; registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa ← `./core/baixas.js`; criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias ← `./core/recorrencias.js`; criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura ← `./core/cartoes.js`
+
+## tela (2)
+
+### `src/js/telas/cadastros-generico.js`
+
+MLopes Finance — tela generica para cadastros (clientes, fornecedores, projetos, centros_custo, tags
+
+**Exports:** `renderCadastroGenerico`
+
+### `src/js/telas/configuracoes.js`
+
+MLopes Finance — Tela de Configurações
+
+**Exports:** `renderConfiguracoes`
+
+**API calls:** `configuracoes:listar`, `configuracoes:salvar`, `configuracoes:resetar`
+
+## tool (3)
+
+### `tools/build-resources.mjs`
+
+Imagens extras (logo, favicon) usadas no header
+
+**Imports:** fileURLToPath ← `node:url`
+
+### `tools/check.mjs`
+
+**Imports:** spawnSync ← `node:child_process`
+
+### `tools/graphify.mjs`
+
+MLopes Finance — GRAPHIFY.md generator
+
+**Imports:** fileURLToPath ← `node:url`
+
+## sql (1)
+
+### `src/js/backend/schema.sql`
+
+**Tabelas:** `meta`, `contextos_financeiros`, `contas`, `categorias`, `lancamentos`, `auditoria`, `configuracoes`, `clientes`, `fornecedores`, `projetos`, `centros_custo`, `tags`, `lancamento_tags`, `transferencias`, `baixas`, `recorrencias`, `cartoes`, `faturas`
+
+**Indices:** `idx_lancamentos_contexto_data`, `idx_baixas_lancamento`, `idx_clientes_contexto`, `idx_fornecedores_contexto`, `idx_projetos_contexto`, `idx_centros_custo_contexto`, `idx_tags_contexto`, `idx_faturas_cartao`
+

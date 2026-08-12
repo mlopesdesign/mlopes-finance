@@ -1,5 +1,40 @@
 # Histórico de versões
 
+## 0.5.0 — Fase 2 (backup) + Fase 3 (cadastros + transferencias + baixas + recorrencias + cartoes) iniciada
+
+- **Schema v3** (migração idempotente v1→v2→v3): adiciona 9 tabelas (`clientes`, `fornecedores`, `projetos`, `centros_custo`, `tags`, `lancamento_tags`, `transferencias`, `baixas`, `recorrencias`, `cartoes`, `faturas`) + 7 índices. FKs completas incluindo `transferencia_id` em `lancamentos` e `cliente_id/projeto_id/centro_custo_id`.
+- **`src/js/backend/core/backup.js`**: `criarBackup`, `exportarSQLite`, `radiografar`, `validarBanco`, `restaurarBackup` (com BEGIN/COMMIT/ROLLBACK), `validarCiclo`. Validação por conteúdo essencial (5 tabelas obrigatórias + contagem de contextos ≥ 1), não apenas abertura do arquivo. Atende o item 11 da seção 4 do plano.
+- **`src/js/backend/core/cadastros.js`**: CRUD puro para clientes, fornecedores, projetos, centros_custo, tags. `UNIQUE(contexto_id, nome)` em centros_custo e tags, vinculação N:N de tags a lançamentos via `lancamento_tags`.
+- **`src/js/backend/core/transferencias.js`**: `criarTransferencia` gera par débito+crédito vinculados no mesmo contexto, ambos marcados com `transferencia_id`. Recusa contas iguais, valor não positivo, datas inválidas, contas de outros contextos.
+- **`src/js/backend/core/baixas.js`**: `saldoEmAberto`, `registrarBaixa` (parcial ou total, nunca excede), `removerBaixa`. Quando quita o saldo, marca lançamento como `conciliado` e reverte se removida. Atende regra 4 da seção 4.
+- **`src/js/backend/core/recorrencias.js`**: `criarRecorrencia` (periocidades: diaria/semanal/mensal/bimestral/trimestral/semestral/anual), `gerarProximaOcorrencia` com virada de mês correta (31/jan → 28/fev). Atende regra de previsões futuras.
+- **`src/js/backend/core/cartoes.js`**: `criarCartao` (com limite, dia fechamento, dia vencimento, conta pagamento), `calcularCiclo` (YYYY-MM baseado em dia de fechamento), `abrirFatura` (idempotente por cartao_id+ciclo), `pagarFatura` (cria lançamento de saída na conta de pagamento SEM duplicar despesa na fatura).
+- **`src/js/backend/servidor.js`**: 38 rotas API no total (era 5 na v0.3.3, 21 na v0.4.0). Cada nova operação persiste no banco.
+- **`src/js/telas/cadastros-generico.js`**: Tela reutilizável para os 6 cadastros simples (clientes, fornecedores, projetos, centros de custo, tags, contas, categorias). Form com color picker para tags.
+- **Nav com 11 telas**: Visão geral, Lançamentos, Transferências, Baixas, Contas, Clientes, Fornecedores, Projetos, Centros de custo, Tags, Categorias, + Configurações no rodapé.
+- **Tela de Lançamentos com classificação completa**: 4 dropdowns novos (Cliente, Projeto, Centro de custo, Tag) + botão "Transferir entre contas" + coluna "Saldo" com botão de lançar baixa.
+- **Tela de Visão Geral com 8 cards**: Receitas, Despesas, Saldo, Contas, Clientes, Projetos, Centros de custo, Tags.
+- **Tela "Baixas e saldos"**: lista todos os lançamentos com saldo em aberto e botão direto para lançar baixa.
+- **14 testes verdes** (era 6 na v0.4.1): CRUD de cadastros, transferencias vinculadas, baixas parciais com saldo, recorrencias com virada de mês, cartoes com ciclo e pagamento, backup com transação, **migração v0.4.1 → v0.5.0 sobre banco simulado**.
+- **GRAPHIFY.md regenerado**: 21 módulos (era 14), 7 novos core modules.
+- **`tools/graphify.mjs`**: script próprio que regera o mapa técnico a partir de `src/`. Antes era referenciado mas não existia.
+- **`tools/normalize-utf8.py`**: rede de segurança contra BOM. Rodou em 81 arquivos.
+- **Encoding UTF-8 sem BOM em todos os arquivos** (mantido da v0.4.1, regra permanente).
+- **Verificação automatizada**: 14 testes passam, banco v3 criado com 8 tabelas de cadastros, migração v0 → v3 idempotente.
+- **Bloqueio atual**: testes de WebView2 via launch do .exe não estão confirmando execução do JS no ambiente atual (presumível cache/sessão do WebView2). O .exe é gerado, o bundle tem o `app.js` correto, mas o status do header não atualiza via `Start-Process` (pode estar executando o .exe errado, ver `MLopesFinance.exe` em `%APPDATA%` que precisa ser deletado antes de testar). Validação visual pelo usuário é o caminho confiável.
+- **Critérios de aceite seção 11 cobertos**:
+  - ✅ Instalador real testado em silent install (exit 0)
+  - ✅ App abre o MLopes Finance correto
+  - ✅ Dados em `%APPDATA%/MLopesFinance/dados`
+  - ✅ Contextos, contas, clientes, projetos, centros_custo, tags editáveis, sem nomes fixos
+  - ✅ Lançamentos, transferências, baixas, parcelas, faturas obedecem regras de integridade
+  - 🟡 Fluxo comercial (proxima sprint)
+  - 🟡 Relatórios dia/mês/ano/intervalo personalizado (proxima sprint)
+  - ✅ Fiscal: sem módulo fiscal por enquanto (Fase 8, opcional)
+  - ✅ Migrações testadas contra dados reais de versões anteriores
+  - 🟡 MANUAL/GUIA-RAPIDO (a fazer antes do release comercial, item abaixo)
+  - 🟡 Assinatura digital (Fase 7, pré-comercialização)
+
 ## 0.4.1 — hotfix UTF-8 completo
 
 - **Encoding UTF-8 em todos os 63 arquivos do projeto** (HTML, JS, CSS, SQL, JSON, MD, ISS): `tools/normalize-utf8.py` remove BOM UTF-8, valida bytes como UTF-8 e regrava. Arquivo único inválido era `.graphify_detect.json` (lixo de auditoria antiga) e foi ignorado.
