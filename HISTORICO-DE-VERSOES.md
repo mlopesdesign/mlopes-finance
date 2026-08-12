@@ -1,3 +1,28 @@
+
+## 0.7.0 — Fase 6 (relatorios e balancete)
+
+- **Fase 6 do plano** (item 11.c, "Relatorios dia/mes/ano/intervalo personalizado"):
+  - **`src/js/backend/core/relatorios.js`** (~12 KB): funcoes puras
+    - `calcularPeriodo(tipo, customInicio, customFim)` — converte `este_mes` / `mes_passado` / `este_ano` / `ano_passado` / `ultimos_12m` / `custom` em `{inicio, fim, anterior: {inicio, fim}}`
+    - `balancete(db, { contextoId, dataInicio, dataFim, agrupamento })` — agrupa por `categoria` / `conta` / `cliente` / `projeto` / `centro_custo` / `tag`
+    - `comparativo(db, ...)` — wrapper que retorna `{atual, anterior, delta, tipo}`. Delta = atual - anterior.
+    - `exportaCSV(blc)` — CSV com BOM UTF-8 + escape RFC 4180
+  - **Tag N:N**: para agrupamento por tag, lancamentos sem tag vao pra "(sem tag)" automaticamente.
+  - **3 rotas novas no `servidor.js`**: `relatorios:balancete`, `relatorios:comparativo`, `relatorios:exportarCSV`.
+  - **`src/js/telas/relatorios.js`**: item "Relatorios" no sidebar. Filtros: Periodo (6 opcoes) + Agrupar por (6 opcoes) + checkbox "Comparar com periodo anterior". Botoes "Gerar", "Exportar CSV", "Imprimir / PDF". Paineis: 3 KPIs (Receitas, Despesas, Saldo) + tabela atual + tabela anterior + cards de delta.
+  - **Imprimir / PDF via `window.print()` + CSS print**: usuario escolhe "Salvar como PDF" no dialog. `@media print` esconde sidebar/topbar/filtros. `@page { size: A4 portrait; margin: 12mm }`.
+  - **CSV com BOM** pra Excel abrir UTF-8 certo.
+  - **27/27 testes verde** (era 19): 8 testes novos.
+  - **Bump 0.6.0 → 0.7.0** em 5 lugares.
+  - **Smoke test**: silent install OK, sidebar mostra "Relatorios" no lugar certo, dashboard carrega, VERSÃO 0.7.0 no topbar.
+- **Proxima versao (v0.8.0 — backlog)**:
+  - **Refatorar "Conta" como pessoa** (PF/PJ): `contas.pessoa TEXT DEFAULT 'mista'` + UI de cadastro.
+  - **Parcelamentos com projecao**: entidade `parcelamentos` (v5) + endpoint `parcelamentos:projecaoFutura(contextoId, meses)`.
+  - **Regime de caixa** (relatorio opcional de fluxo de caixa por data de pagamento).
+  - **Auto-update via GitHub Releases** (depende de voce criar o repo).
+  - **Checkbox "Iniciar ao finalizar"** no instalador.
+  - **Contextos UI** (CRUD + seletor no header) — Fase 1 do plano ainda nao exposta.
+
 # Histórico de versões
 
 ## 0.6.0 — Fase 5 (importação OFX/CSV) + Fase 7 (botão de backup)

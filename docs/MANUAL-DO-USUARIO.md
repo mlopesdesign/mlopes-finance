@@ -1,6 +1,6 @@
-# Manual do Usuário — MLopes Finance v0.6.0
+﻿# Manual do Usuário — MLopes Finance v0.7.0
 
-Bem-vindo ao **MLopes Finance**, o sistema de gestão financeira pessoal e empresarial para Windows 10/11, 100% local e auditável. Este manual cobre a versão **0.6.0**.
+Bem-vindo ao **MLopes Finance**, o sistema de gestão financeira pessoal e empresarial para Windows 10/11, 100% local e auditável. Este manual cobre a versão **0.7.0**.
 
 ---
 
@@ -234,3 +234,42 @@ O backup é a forma mais segura de migrar entre máquinas, ou de ter um ponto de
 ## 10. Versão
 
 Este manual cobre a **v0.6.0**. Funcionalidades das próximas versões (conciliação automática, comercial, relatórios avançados, NFS-e) virão em releases futuros. Veja `HISTORICO-DE-VERSOES.md` no diretório do projeto.
+
+## 11. Relatórios e balancete (v0.7.0)
+
+Acesse **Relatórios** no menu lateral (entre "Baixas e saldos" e "Contas").
+
+### 11.1 Filtros
+
+No topo da tela, escolha:
+
+- **Período** (6 opções): Este mês, Mês passado, Este ano, Ano passado, Últimos 12 meses, Personalizado (com campos "De" e "até" para data inicial e final).
+- **Agrupar por** (6 opções): Categoria, Conta, Cliente, Projeto, Centro de custo, Tag.
+- **Comparar com período anterior**: marque para ver o balancete do período equivalente anterior (ex: este mês vs mês passado) e o delta (variação) entre eles.
+
+Clique em **Gerar relatório** para ver os resultados.
+
+### 11.2 O que aparece
+
+- **3 KPIs** no topo: Receitas (verde), Despesas (vermelho), Saldo (verde se positivo, vermelho se negativo).
+- **Tabela do balancete atual** com uma linha por grupo + linha de total.
+- **Tabela do balancete anterior** (se "Comparar" estiver marcado).
+- **3 cards de delta** mostrando a variação (Receitas, Despesas, Saldo) com cores verde/vermelho.
+
+### 11.3 Exportar
+
+- **Exportar CSV**: gera um arquivo `.csv` com UTF-8 + BOM (abre certo no Excel). Inclui header + linhas + total + meta info (período, contexto, agrupamento).
+- **Imprimir / PDF**: abre o dialog de impressão do Windows. Escolha "Salvar como PDF" como destino para gerar um PDF com a mesma cara da tela (sidebar e filtros escondidos no print).
+
+### 11.4 Regime de competência
+
+Os relatórios usam **data de competência** (data em que o lançamento foi registrado), não data de pagamento. Para regime de caixa, virá na v0.8 com a coluna `data_pagamento` da tabela `baixas`.
+
+### 11.5 Balancete pessoal e empresarial
+
+O sistema de **contextos** (item 3.1) isola os saldos. Para ver o balancete pessoal vs empresarial:
+
+1. Crie dois contextos (em v0.7.0 só via backend; em v0.8.0 via UI): "Pessoal" e "ML Lopes Design".
+2. Em "Relatórios", o contexto é o ativo. Troque no seletor (em v0.8.0) ou reabra o app com o contexto desejado.
+
+Mesmo relatório, dois cliques, saldos isolados.
