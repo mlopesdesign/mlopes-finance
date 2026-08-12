@@ -1,4 +1,4 @@
-#define AppVersion "0.8.5"
+#define AppVersion "0.8.6"
 #define AppName "MLopes Finance"
 #define AppPublisher "ML Lopes Design"
 #define AppExeName "MLopesFinance.exe"

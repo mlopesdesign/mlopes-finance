@@ -1,4 +1,16 @@
 
+## 0.8.6 — Toggle de tema sem reload (alternava em vários cliques)
+
+- **Bug**: o toggle de tema (claro/escuro) no header chamava `location.reload()` a cada clique. Recarregar a pagina inteira pra trocar `data-theme` no `<html>` e' desnecessario. Pior: se o user clicava varias vezes rapido, cada clique disparava um reload que matava o estado do anterior — o user tinha que clicar 3-4x ate o tema efetivamente mudar.
+- **Fix**: removido `location.reload()`. Agora o toggle:
+  1. Le o tema atual via API
+  2. Calcula o novo
+  3. Salva no DB
+  4. Aplica `data-theme` no `<html>` direto
+  5. Re-renderiza o header pra atualizar o icone da pill (☾ Escuro / ☀ Claro)
+- Sem race condition, sem flash, alterna em 1 clique so.
+- **Bump 0.8.5 → 0.8.6** em 7 lugares. 34/34 testes verde.
+
 ## 0.8.5 — Auto-update com token do GitHub (escapa do rate limit 60/h)
 
 - **Problema**: o app chama `https://api.github.com/repos/mlopesdesign/mlopes-finance/releases/latest` **sem autenticação**. O GitHub limita chamadas anônimas a 60 req/h por IP. Depois das várias chamadas que fiz pra validar (build, install, smoke test, rate limit check), o IP do user estourou o limite. Resposta do GitHub pra chamadas anônimas após o estouro: **404** (sim, 404, não 403 — o GitHub "esconde" a diferença pra quem não tem auth). O `update.js` trata 404 como "repositório nao encontrado", mostrando a mensagem confusa no app.

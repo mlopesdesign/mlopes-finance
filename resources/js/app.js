@@ -9,7 +9,7 @@ import { renderRelatorios } from './telas/relatorios.js';
 import { renderContextos } from './telas/contextos.js';
 import * as updUI from './update.js';
 
-const APP_VERSION = '0.8.5';
+const APP_VERSION = '0.8.6';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = []; let appDbPath = '';
 const $ = (s) => document.querySelector(s); const app = $('#app');
@@ -141,7 +141,9 @@ function renderHeader() {
     document.getElementById('toggle-tema').onclick = () => {
       const novo = api('configuracoes:obter', { chave: 'tema' }).valor === 'dark' ? 'light' : 'dark';
       api('configuracoes:salvar', { chave: 'tema', valor: novo, tipo: 'texto' });
-      location.reload();
+      // Aplica no DOM direto (sem reload) e re-renderiza o header pra atualizar o icone
+      document.documentElement.setAttribute('data-theme', novo);
+      renderHeader();
     };
   }
   const strong = document.querySelector('.topbar strong');
