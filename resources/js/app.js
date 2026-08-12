@@ -9,7 +9,7 @@ import { renderRelatorios } from './telas/relatorios.js';
 import { renderContextos } from './telas/contextos.js';
 import * as updUI from './update.js';
 
-const APP_VERSION = '0.8.2';
+const APP_VERSION = '0.8.3';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = []; let appDbPath = '';
 const $ = (s) => document.querySelector(s); const app = $('#app');
@@ -116,7 +116,7 @@ async function boot() {
   log('contextoId=', contextoId);
 
   setStatus('Pronto');
-  renderHeader(local.arquivo);
+  renderHeader();
   document.querySelectorAll('.nav-button').forEach((b) => b.addEventListener('click', () => {
     document.querySelectorAll('.nav-button').forEach((x) => x.classList.remove('active'));
     b.classList.add('active');
@@ -131,13 +131,11 @@ async function boot() {
   updUI.checar(api).then((r) => log('update check:', r?.temAtualizacao ? `v${r.versao} disponivel` : 'sem atualizacao')).catch((e) => log('update erro:', e.message));
 }
 
-function renderHeader(dbPath) {
+function renderHeader() {
   const cfg = api('configuracoes:listar');
   const nome = cfg.nome_exibicao?.valor || 'MLopes Finance';
   const tema = cfg.tema?.valor || TEMA_DEFAULTS.tema;
-  const status = document.getElementById('status');
   const actions = document.getElementById('topbar-actions');
-  if (status) status.textContent = `Versão ${APP_VERSION}`;
   if (actions) {
     actions.innerHTML = `<button class="pill" id="toggle-tema" title="Alternar tema"><span class="dot"></span>${tema === 'dark' ? '☾ Escuro' : '☀ Claro'}</button><span class="pill is-static" title="Versão do aplicativo">VERSÃO ${APP_VERSION}</span>`;
     document.getElementById('toggle-tema').onclick = () => {

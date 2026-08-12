@@ -25,6 +25,13 @@
   - **Conciliacao bancaria automatica** com pareamento data+valor+descricao.
   - **Fluxo comercial** (orcamento → aprovacao → contrato → recebimentos).
 
+## 0.8.3 — Remove redundancia do header (versao aparecia 2x)
+
+- **Redundancia removida**: o header tinha `VERSÃO 0.8.1` (na pill central) E `Versão 0.8.1` (no `#status` canto direito). Agora a versao aparece **so uma vez** (na pill). O `#status` agora mostra o estado dinamico ("Pronto", "Carregando…", etc) que e' o uso correto dele.
+- **Limpeza**: `renderHeader(dbPath)` nao precisa mais do parametro `dbPath` (o path ja foi pra Configuracoes > Avancado na v0.8.1). Funcao agora e' `renderHeader()`.
+- **Bump 0.8.2 → 0.8.3** em 7 lugares. 34/34 testes verde, encoding UTF-8 sem BOM.
+- **Alem do bug visual**: a v0.8.1 foi publicada com o `renderHeader(local.arquivo)` mas eu adicionei o path do banco no `#status` por engano, e a v0.8.1 ja tirou. A v0.8.3 finaliza a limpeza removendo tambem a duplicata de texto da versao.
+
 ## 0.8.2 — Segunda release gatilho (auto-update validado v0.8.1 → v0.8.2)
 
 - **Por que uma v0.8.2 tao rapido depois da v0.8.1**: a v0.8.1 foi a primeira release gatilho (app na v0.8.0 detecta v0.8.1). A v0.8.2 e a segunda: app na v0.8.1 detecta v0.8.2. Prova que o auto-update funciona em cadeia: cada release nova notifica a anterior.
