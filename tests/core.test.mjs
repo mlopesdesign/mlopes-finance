@@ -513,3 +513,24 @@ test('relatorios: balancete valida agrupamento invalido', () => {
     );
   })();
 });
+import { compararVersao, extrairTagVersion } from '../src/js/backend/core/update.js';
+
+test('update: compararVersao identifica maior/menor/igual', () => {
+  assert.equal(compararVersao('0.7.0', '0.7.0'), 0);
+  assert.equal(compararVersao('0.7.0', '0.7.1'), -1);
+  assert.equal(compararVersao('0.7.1', '0.7.0'), 1);
+  assert.equal(compararVersao('0.10.0', '0.9.0'), 1);
+  assert.equal(compararVersao('1.0.0', '0.99.99'), 1);
+  assert.equal(compararVersao('v0.8.0', '0.7.0'), 1); // strip 'v'
+  assert.equal(compararVersao('0.7.0', 'v0.8.0'), -1);
+  assert.equal(compararVersao('0.7.0', '0.7.0-rc1'), 0); // ignora sufixo
+});
+
+test('update: extrairTagVersion remove prefixo v', () => {
+  assert.equal(extrairTagVersion('v0.7.0'), '0.7.0');
+  assert.equal(extrairTagVersion('0.7.0'), '0.7.0');
+  assert.equal(extrairTagVersion('V1.2.3'), '1.2.3');
+  assert.equal(extrairTagVersion(null), null);
+  assert.equal(extrairTagVersion(''), null);
+  assert.equal(extrairTagVersion(undefined), null);
+});

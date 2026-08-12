@@ -9,6 +9,7 @@ import { criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias } from './
 import { criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura } from './core/cartoes.js';
 import { criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao } from './core/importacao.js';
 import { balancete, comparativo, exportaCSV } from './core/relatorios.js';
+import { checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, compararVersao, pathTempInstalador } from './core/update.js';
 
 export function criarApi(db, persistir = () => {}) {
   const rotas = {
@@ -86,6 +87,12 @@ export function criarApi(db, persistir = () => {}) {
     'relatorios:balancete': (d) => balancete(db, d),
     'relatorios:comparativo': (d) => comparativo(db, d),
     'relatorios:exportarCSV': (d) => exportaCSV(balancete(db, d)),
+
+    // Auto-update via GitHub Releases (Fase Hardening)
+    'update:checar': async (d = {}) => await checarAtualizacao({ ...d, versaoAtual: APP_VERSION }),
+    'update:baixar': async (d) => await baixarAtualizacao(d.assetUrl, d.destino || pathTempInstalador()),
+    'update:aplicar': async (d) => await aplicarAtualizacao(d.caminho || pathTempInstalador()),
+    'update:compararVersao': (d) => compararVersao(d.a, d.b),
   };
   return (canal, dados = {}) => { if (!rotas[canal]) throw new Error(`Canal nao autorizado: ${canal}`); return rotas[canal](dados); };
 }

@@ -1,4 +1,31 @@
 
+## 0.7.1 — Auto-update via GitHub Releases (Fase Hardening)
+
+- **Auto-update via GitHub Releases** com aviso automatico na tela (padrao dos outros softwares ML Lopes Design):
+  - **`src/js/backend/core/update.js`** (~5.6 KB): funcoes puras
+    - `compararVersao(a, b)` — semver-aware, strip prefixo `v`, retorna -1/0/1
+    - `extrairTagVersion(tag)` — strip prefixo `v`/`V`
+    - `checarAtualizacao({ owner, repo, versaoAtual, force })` — `GET https://api.github.com/repos/{owner}/{repo}/releases/latest` com timeout 10s, parseia `tag_name`, encontra o asset `MLopes Finance Setup*.exe` por regex case-insensitive, retorna `{ temAtualizacao, versao, versaoAtual, url, changelog, publicadoEm, asset: { nome, url, tamanhoMB, sha256 } }`. Cache em `localStorage` com TTL de 4h (key `mlopes-update-check-{owner}-{repo}`). Trata 403 (rate limit), 404 (repo nao existe), e outros erros com mensagem clara.
+    - `baixarAtualizacao(assetUrl, destino)` — `fetch()` + `Neutralino.filesystem.writeBinaryFile` em `C:\Windows\Temp\MLopesFinance-Update.exe`
+    - `aplicarAtualizacao(caminho)` — `Neutralino.os.open(caminhoInstalador)` (abre o instalador) + `Neutralino.app.exit()` depois de 1s. O Inno Setup detecta versao anterior pelo mesmo AppId e atualiza.
+    - `pathTempInstalador()` — default `C:\Windows\Temp\MLopesFinance-Update.exe`
+    - Owner/repo default: `mlopesdesign/mlopes-finance` (anônimo, 60 req/h por IP)
+  - **`src/js/update.js`** (UI, ~7 KB): modulo com 3 pontos de entrada
+    - `checar(api)` — chama a API, atualiza state, re-renderiza pill/banner
+    - `renderPill()` — pill no header (ao lado de `VERSÃO X.Y.Z`). Estados: `↻ Verificando…` (cinza), `🟡 v0.8.0 disponivel` (amarelo, clicavel), ou ausente quando sem update
+    - `renderBanner()` — banner dismissible no topo do `#app` (amarelo/laranja) com "🟡 Atualizacao disponivel · Versao 0.8.0 (voce esta na 0.7.1) · 15.3 MB" + 3 botoes: "Atualizar agora" / "Ver detalhes" / "Mais tarde" (24h dismiss via `localStorage`)
+    - `abrirModal()` — modal com versao, tamanho, SHA256, changelog em `<pre>`, link pro GitHub, botao "Atualizar agora" / "Mais tarde"
+  - **Ponto de entrada no boot do `app.js`**: depois do `render('dashboard')`, chama `updUI.checar(api)` em background. Expor `api` em `window._appApi` pro `update.js` poder chamar.
+  - **Bloco "Atualizacoes" em Configurações → Avançado**: botao "Verificar atualizações" que força a checagem (`force=true`) e mostra status + abre o modal.
+  - **2 testes novos** (29/29 verde total): `compararVersao identifica maior/menor/igual` (8 casos incluindo edge cases) + `extrairTagVersion remove prefixo v`.
+  - **CSS** (~3 KB adicionados): `.update-pill`, `.update-banner` (com variante dark), `.modal-backdrop`/`.modal-content`/`.modal-header`/`.modal-body`/`.modal-actions`/`.changelog`/`.modal-close`. Cor de destaque amarela `#fff4d6` no light e `#2a2008` no dark.
+  - **Bump 0.7.0 → 0.7.1** em 5 lugares.
+  - **Smoke test**: silent install OK, ProductVersion 0.7.1 confirmada no .exe, app abre, VERSÃO 0.7.1 visivel no topbar.
+  - **Para o auto-update funcionar de verdade**: precisa que o repo `mlopesdesign/mlopes-finance` exista no GitHub com pelo menos 1 release (v0.7.1) com o asset `MLopes Finance Setup.exe` anexado. Setup pendente do lado do owner.
+  - **Inno Setup upgrade automatico**: o instalador tem o mesmo `AppId` (`{E21E2D7B-3BA2-4F40-88F0-MLFP01000001}`) entre versões, então o Windows detecta a versao anterior e pergunta "atualizar ou desinstalar antes". Sem mudar AppId entre versões, upgrade e nativo do Inno Setup.
+- **Encoding UTF-8 sem BOM** mantido.
+
+
 ## 0.7.0 — Fase 6 (relatorios e balancete)
 
 - **Fase 6 do plano** (item 11.c, "Relatorios dia/mes/ano/intervalo personalizado"):

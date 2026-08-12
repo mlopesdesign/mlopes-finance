@@ -74,6 +74,10 @@ export function renderConfiguracoes(contextoId, api) {
           <div class="panel">
             <h2>Avançado</h2>
             <div class="field-row">
+              <div><div class="field-label">Atualizações</div><div class="field-help">Checa novas versões no GitHub Releases. Avisa automaticamente ao abrir o app.</div></div>
+              <div><button class="button" id="cfg-check-update">Verificar atualizações</button></div>
+            </div>
+            <div class="field-row">
               <div><div class="field-label">Exportar backup do banco</div><div class="field-help">Cria um arquivo .sqlite a partir do estado atual. Guarde em local seguro.</div></div>
               <div><button class="button" id="cfg-exportar-backup">Exportar backup…</button></div>
             </div>
@@ -136,6 +140,27 @@ export function renderConfiguracoes(contextoId, api) {
   document.getElementById('cfg-exportar-backup').onclick = exportarBackup;
   document.getElementById('cfg-restaurar-backup').onclick = restaurarBackup;
   document.getElementById('cfg-radiografar').onclick = radiografar;
+  document.getElementById('cfg-check-update').onclick = checarUpdateManual;
+}
+
+async function checarUpdateManual() {
+  setBackupStatus('Verificando atualizacoes no GitHub...');
+  try {
+    const upd = await import('../update.js');
+    const out = await upd.checar(_api);
+    if (out.erro) {
+      setBackupStatus('Erro: ' + out.erro, true);
+    } else if (out.temAtualizacao) {
+      setBackupStatus(`Atualizacao disponivel: v${out.versao}. Veja o banner no topo.`);
+      upd.abrirModal();
+    } else if (out.versao === out.versaoAtual) {
+      setBackupStatus(`Voce ja esta na versao mais recente (v${out.versaoAtual}).`);
+    } else {
+      setBackupStatus(`Versao no GitHub: v${out.versao} (a sua e v${out.versaoAtual}). Estranho.`);
+    }
+  } catch (e) {
+    setBackupStatus('Erro: ' + e.message, true);
+  }
 }
 
 function popularForm() {

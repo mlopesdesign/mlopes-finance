@@ -1,6 +1,6 @@
-﻿# Manual do Usuário — MLopes Finance v0.7.0
+﻿# Manual do Usuário — MLopes Finance v0.7.1
 
-Bem-vindo ao **MLopes Finance**, o sistema de gestão financeira pessoal e empresarial para Windows 10/11, 100% local e auditável. Este manual cobre a versão **0.7.0**.
+Bem-vindo ao **MLopes Finance**, o sistema de gestão financeira pessoal e empresarial para Windows 10/11, 100% local e auditável. Este manual cobre a versão **0.7.1**.
 
 ---
 
@@ -273,3 +273,21 @@ O sistema de **contextos** (item 3.1) isola os saldos. Para ver o balancete pess
 2. Em "Relatórios", o contexto é o ativo. Troque no seletor (em v0.8.0) ou reabra o app com o contexto desejado.
 
 Mesmo relatório, dois cliques, saldos isolados.
+
+## 12. Atualizações automáticas (v0.7.1)
+
+O MLopes Finance verifica novas versões no GitHub Releases automaticamente:
+
+- **Ao abrir o app**, faz uma chamada a `https://api.github.com/repos/mlopesdesign/mlopes-finance/releases/latest` (timeout 10s, anônimo, 60 req/h por IP).
+- **Cache local em `localStorage`** com TTL de 4h — não fica martelando a API.
+- **Se tem versão nova**: aparece um **banner amarelo no topo da tela** com "🟡 Atualização disponível" + botão "Atualizar agora" / "Ver detalhes" / "Mais tarde" (este último esconde por 24h).
+- **Pill no header** ao lado de "VERSÃO X.Y.Z" mostra "🟡 v0.8.0 disponível" clicável.
+- **Clicar** abre um modal com changelog, tamanho do download, SHA256, link pro GitHub, e botão "Atualizar agora".
+- **"Atualizar agora"** baixa o instalador via `Neutralino.net` pro temp, fecha o app, e abre o instalador. O Inno Setup detecta a versão anterior (mesmo AppId) e atualiza — **sem desinstalar antes**.
+- **Verificação manual** em **Configurações → Avançado → Atualizações → "Verificar atualizações"**.
+
+**Para o auto-update funcionar**, o owner precisa:
+1. Criar o repo `github.com/mlopesdesign/mlopes-finance`
+2. Push do source + tag `v0.7.1`
+3. Criar uma Release com o `MLopes Finance Setup.exe` como asset
+4. O user, ao abrir o app na v0.7.0 ou anterior, recebe a notificação automaticamente.

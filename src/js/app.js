@@ -6,8 +6,9 @@ import { renderConfiguracoes } from './telas/configuracoes.js';
 import { renderCadastroGenerico } from './telas/cadastros-generico.js';
 import { renderImportacao } from './telas/importacao.js';
 import { renderRelatorios } from './telas/relatorios.js';
+import * as updUI from './update.js';
 
-const APP_VERSION = '0.7.0';
+const APP_VERSION = '0.7.1';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = [];
 const $ = (s) => document.querySelector(s); const app = $('#app');
@@ -121,6 +122,11 @@ async function boot() {
   }));
   render('dashboard');
   log('boot done');
+
+  // Auto-update via GitHub Releases: checa em background, atualiza pill/banner/modal
+  globalThis._appApi = api;
+  updUI.renderPill();
+  updUI.checar(api).then((r) => log('update check:', r?.temAtualizacao ? `v${r.versao} disponivel` : 'sem atualizacao')).catch((e) => log('update erro:', e.message));
 }
 
 function renderHeader(dbPath) {
