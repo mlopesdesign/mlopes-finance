@@ -4,7 +4,7 @@ import initSqlJs from 'sql.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { criarConta, criarContexto, validarData, validarValorCentavos } from '../src/js/backend/core/financeiro.js';
+import { criarConta, criarContexto, criarCategoria, validarData, validarValorCentavos } from '../src/js/backend/core/financeiro.js';
 import { conciliarLancamento, criarLancamento, resumo } from '../src/js/backend/core/lancamentos.js';
 import { abrirBancoLocal } from '../src/js/backend/ambiente.js';
 import { getConfig, setConfig, getAllConfig, resetConfig } from '../src/js/backend/core/configuracoes.js';
@@ -16,6 +16,7 @@ import { registrarBaixa, saldoEmAberto, listarBaixas } from '../src/js/backend/c
 import { criarRecorrencia, gerarProximaOcorrencia } from '../src/js/backend/core/recorrencias.js';
 import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas } from '../src/js/backend/core/cartoes.js';
 import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao } from '../src/js/backend/core/importacao.js';
+import { balancete, comparativo, exportaCSV, calcularPeriodo } from '../src/js/backend/core/relatorios.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const wasmPath = path.join(root, 'node_modules/sql.js/dist/sql-wasm.wasm');
@@ -375,4 +376,140 @@ test('importacao: cancelarImportacao marca pendentes como ignorados', async () =
   const lista = listarImportacoes(db, cid);
   assert.equal(lista.length, 1);
   assert.equal(lista[0][7], 'cancelada'); // coluna status
+});
+
+test('relatorios: balancete basico agrupa por categoria e soma certo', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta', tipo: 'bancaria' });
+  const catR = criarCategoria(db, { contextoId: cid, nome: 'Salario', natureza: 'receita' });
+  const catD = criarCategoria(db, { contextoId: cid, nome: 'Mercado', natureza: 'despesa' });
+  criarLancamento(db, { contextoId: cid, contaId, categoriaId: catR, natureza: 'receita', valorCentavos: 500000, dataCompetencia: '2026-08-05', descricao: 'Salario' });
+  criarLancamento(db, { contextoId: cid, contaId, categoriaId: catR, natureza: 'receita', valorCentavos: 100000, dataCompetencia: '2026-08-15', descricao: 'Extra' });
+  criarLancamento(db, { contextoId: cid, contaId, categoriaId: catD, natureza: 'despesa', valorCentavos: 35000, dataCompetencia: '2026-08-10', descricao: 'Supermercado' });
+  criarLancamento(db, { contextoId: cid, contaId, categoriaId: catD, natureza: 'despesa', valorCentavos: 12000, dataCompetencia: '2026-08-12', descricao: 'Padaria' });
+
+  const blc = balancete(db, { contextoId: cid, dataInicio: '2026-08-01', dataFim: '2026-08-31', agrupamento: 'categoria' });
+  assert.equal(blc.linhas.length, 2);
+  const sal = blc.linhas.find(l => l.grupo === 'Salario');
+  const mer = blc.linhas.find(l => l.grupo === 'Mercado');
+  assert.equal(sal.totalReceitas, 600000);
+  assert.equal(sal.lancamentos, 2);
+  assert.equal(mer.totalDespesas, 47000);
+  assert.equal(mer.lancamentos, 2);
+  assert.equal(blc.totais.totalReceitas, 600000);
+  assert.equal(blc.totais.totalDespesas, 47000);
+  assert.equal(blc.totais.saldo, 553000);
+  assert.equal(blc.totais.lancamentos, 4);
+});
+
+test('relatorios: balancete filtra por periodo (ignora fora do intervalo)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta', tipo: 'bancaria' });
+  const cat = criarCategoria(db, { contextoId: cid, nome: 'Geral', natureza: 'despesa' });
+  criarLancamento(db, { contextoId: cid, contaId, categoriaId: cat, natureza: 'despesa', valorCentavos: 1000, dataCompetencia: '2026-07-15', descricao: 'Antes' });
+  criarLancamento(db, { contextoId: cid, contaId, categoriaId: cat, natureza: 'despesa', valorCentavos: 2000, dataCompetencia: '2026-08-15', descricao: 'Dentro' });
+  criarLancamento(db, { contextoId: cid, contaId, categoriaId: cat, natureza: 'despesa', valorCentavos: 3000, dataCompetencia: '2026-09-15', descricao: 'Depois' });
+  const blc = balancete(db, { contextoId: cid, dataInicio: '2026-08-01', dataFim: '2026-08-31', agrupamento: 'categoria' });
+  assert.equal(blc.totais.lancamentos, 1);
+  assert.equal(blc.totais.totalDespesas, 2000);
+});
+
+test('relatorios: balancete vazio retorna totais zerados', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const blc = balancete(db, { contextoId: cid, dataInicio: '2026-01-01', dataFim: '2026-01-31', agrupamento: 'categoria' });
+  assert.equal(blc.linhas.length, 0);
+  assert.equal(blc.totais.totalReceitas, 0);
+  assert.equal(blc.totais.totalDespesas, 0);
+  assert.equal(blc.totais.saldo, 0);
+  assert.equal(blc.totais.lancamentos, 0);
+});
+
+test('relatorios: balancete agrupa por tag (N:N) com SEM_TAG pra lancamentos sem', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'C', tipo: 'bancaria' });
+  const cat = criarCategoria(db, { contextoId: cid, nome: 'Geral', natureza: 'despesa' });
+  const tagUrg = criarTag(db, { contextoId: cid, nome: 'Urgente' });
+  const tagViag = criarTag(db, { contextoId: cid, nome: 'Viagem' });
+  const l1 = criarLancamento(db, { contextoId: cid, contaId, categoriaId: cat, natureza: 'despesa', valorCentavos: 1000, dataCompetencia: '2026-08-10', descricao: 'A' });
+  const l2 = criarLancamento(db, { contextoId: cid, contaId, categoriaId: cat, natureza: 'despesa', valorCentavos: 2000, dataCompetencia: '2026-08-11', descricao: 'B' });
+  vincularTagLancamento(db, l1, tagUrg);
+  vincularTagLancamento(db, l2, tagViag);
+  const blc = balancete(db, { contextoId: cid, dataInicio: '2026-08-01', dataFim: '2026-08-31', agrupamento: 'tag' });
+  assert.equal(blc.linhas.length, 2);
+  const urg = blc.linhas.find(l => l.grupo === 'Urgente');
+  const viag = blc.linhas.find(l => l.grupo === 'Viagem');
+  assert.equal(urg.totalDespesas, 1000);
+  assert.equal(viag.totalDespesas, 2000);
+});
+
+test('relatorios: comparativo mensal retorna atual + anterior + delta', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'C', tipo: 'bancaria' });
+  const cat = criarCategoria(db, { contextoId: cid, nome: 'Geral', natureza: 'receita' });
+  // Marco 2026: 1000
+  criarLancamento(db, { contextoId: cid, contaId, categoriaId: cat, natureza: 'receita', valorCentavos: 100000, dataCompetencia: '2026-03-15', descricao: 'M' });
+  // Abril 2026: 2000
+  criarLancamento(db, { contextoId: cid, contaId, categoriaId: cat, natureza: 'receita', valorCentavos: 200000, dataCompetencia: '2026-04-15', descricao: 'A' });
+
+  // Forco o periodo custom pra testar
+  const out = comparativo(db, {
+    contextoId: cid,
+    tipo: 'custom',
+    customInicio: '2026-04-01',
+    customFim: '2026-04-30',
+    agrupamento: 'categoria',
+  });
+  assert.equal(out.atual.totais.totalReceitas, 200000);
+  assert.equal(out.anterior.totais.totalReceitas, 100000);
+  assert.equal(out.delta.totalReceitas, 100000); // 2000 - 1000
+  assert.equal(out.delta.saldo, 100000);
+});
+
+test('relatorios: calcularPeriodo custom gera anterior com mesma duracao', () => {
+  const p = calcularPeriodo('custom', '2026-04-15', '2026-04-25');
+  assert.equal(p.inicio.toISOString().slice(0, 10), '2026-04-15');
+  assert.equal(p.fim.toISOString().slice(0, 10), '2026-04-25');
+  // Periodo anterior: 11 dias, terminando em 2026-04-14
+  assert.equal(p.anterior.fim.toISOString().slice(0, 10), '2026-04-14');
+  assert.equal(p.anterior.inicio.toISOString().slice(0, 10), '2026-04-04');
+});
+
+test('relatorios: exportaCSV gera header + linhas + total + escapa virgula/aspas', () => {
+  const blc = {
+    contextoId: 1,
+    dataInicio: '2026-08-01',
+    dataFim: '2026-08-31',
+    agrupamento: 'categoria',
+    linhas: [
+      { grupo: 'Salario', totalReceitas: 500000, totalDespesas: 0, saldo: 500000, lancamentos: 1 },
+      { grupo: 'Mercado, "extra"', totalReceitas: 0, totalDespesas: 12345, saldo: -12345, lancamentos: 2 },
+    ],
+    totais: { totalReceitas: 500000, totalDespesas: 12345, saldo: 487655, lancamentos: 3 },
+  };
+  const csv = exportaCSV(blc);
+  // Header presente
+  assert.match(csv, /Grupo;Receitas \(R\$\);Despesas \(R\$\);Saldo \(R\$\);Lancamentos/);
+  // Meta info
+  assert.match(csv, /# Periodo: 2026-08-01 a 2026-08-31/);
+  // Linha escapada com virgula e aspas
+  assert.match(csv, /"Mercado, ""extra"""/);
+  // Total
+  assert.match(csv, /^TOTAL;/m);
+});
+
+test('relatorios: balancete valida agrupamento invalido', () => {
+  // Sync test (sem novoBanco)
+  return (async () => {
+    const db = await novoBanco();
+    const cid = criarContexto(db, { nome: 'C' });
+    assert.throws(
+      () => balancete(db, { contextoId: cid, dataInicio: '2026-08-01', dataFim: '2026-08-31', agrupamento: 'invalido' }),
+      /Agrupamento invalido/
+    );
+  })();
 });

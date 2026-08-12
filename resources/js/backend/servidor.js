@@ -8,6 +8,7 @@ import { registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa } from './cor
 import { criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias } from './core/recorrencias.js';
 import { criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura } from './core/cartoes.js';
 import { criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao } from './core/importacao.js';
+import { balancete, comparativo, exportaCSV } from './core/relatorios.js';
 
 export function criarApi(db, persistir = () => {}) {
   const rotas = {
@@ -80,6 +81,11 @@ export function criarApi(db, persistir = () => {}) {
     'importacao:listar': (d) => listarImportacoes(db, d.contextoId),
     'importacao:cancelar': (d) => { cancelarImportacao(db, d.importacaoId); persistir(); return true; },
     'importacao:listarItens': (d) => db.exec('SELECT id, conta_id, data_transacao, valor_centavos, descricao, chave_externa, status, lancamento_id FROM itens_importacao WHERE importacao_id = ? ORDER BY data_transacao, id', [d.importacaoId])[0]?.values ?? [],
+
+    // Relatorios e balancete — Fase 6
+    'relatorios:balancete': (d) => balancete(db, d),
+    'relatorios:comparativo': (d) => comparativo(db, d),
+    'relatorios:exportarCSV': (d) => exportaCSV(balancete(db, d)),
   };
   return (canal, dados = {}) => { if (!rotas[canal]) throw new Error(`Canal nao autorizado: ${canal}`); return rotas[canal](dados); };
 }

@@ -5,8 +5,9 @@ import { aplicarTemaDoBanco, DEFAULTS as TEMA_DEFAULTS } from './tema.js';
 import { renderConfiguracoes } from './telas/configuracoes.js';
 import { renderCadastroGenerico } from './telas/cadastros-generico.js';
 import { renderImportacao } from './telas/importacao.js';
+import { renderRelatorios } from './telas/relatorios.js';
 
-const APP_VERSION = '0.6.0';
+const APP_VERSION = '0.7.0';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = [];
 const $ = (s) => document.querySelector(s); const app = $('#app');
@@ -153,6 +154,7 @@ function render(view) {
   if (view === 'tags') return renderCadastroGenerico('tags', contextoId, api);
   if (view === 'transferencias') return renderTransferencias();
   if (view === 'baixas') return renderBaixas();
+  if (view === 'relatorios') return renderRelatorios(contextoId, api);
   if (view === 'importacao') return renderImportacao(contextoId, api);
   if (view === 'configuracoes') return renderConfiguracoes(contextoId, api);
   return renderDashboard();

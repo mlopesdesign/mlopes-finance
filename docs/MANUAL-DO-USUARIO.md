@@ -1,4 +1,4 @@
-﻿# Manual do Usuário — MLopes Finance v0.6.0
+# Manual do Usuário — MLopes Finance v0.6.0
 
 Bem-vindo ao **MLopes Finance**, o sistema de gestão financeira pessoal e empresarial para Windows 10/11, 100% local e auditável. Este manual cobre a versão **0.6.0**.
 

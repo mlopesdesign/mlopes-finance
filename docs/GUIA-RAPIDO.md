@@ -1,4 +1,4 @@
-﻿# Guia Rápido — MLopes Finance v0.5.0
+# Guia Rápido — MLopes Finance v0.5.0
 
 Para o dia a dia. 1 página.
 
