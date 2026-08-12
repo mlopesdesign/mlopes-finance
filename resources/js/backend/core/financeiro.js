@@ -13,7 +13,57 @@ export function validarData(data) {
 export function criarContexto(db, { nome, descricao = '' }) {
   if (!nome?.trim()) throw new Error('Nome do contexto é obrigatório.');
   db.run('INSERT INTO contextos_financeiros (nome, descricao) VALUES (?, ?)', [nome.trim(), descricao.trim()]);
-  return db.exec('SELECT last_insert_rowid() AS id')[0].values[0][0];
+  const id = db.exec('SELECT last_insert_rowid() AS id')[0].values[0][0];
+  // Seed: cria categoria padrao "Transferencia" (natureza ambas) usada pelo fluxo transferencia
+  db.run('INSERT INTO categorias (contexto_id, nome, natureza) VALUES (?, ?, ?)', [id, 'Transferência interna', 'ambas']);
+  return id;
+}
+
+export function listarContextos(db, incluirInativos = false) {
+  const cond = incluirInativos ? '' : 'WHERE ativo = 1';
+  return db.exec(`SELECT id, nome, descricao, ativo, criado_em FROM contextos_financeiros ${cond} ORDER BY ativo DESC, nome`)[0]?.values ?? [];
+}
+
+export function obterContexto(db, id) {
+  if (!Number.isInteger(id)) return null;
+  const rows = db.exec('SELECT id, nome, descricao, ativo, criado_em FROM contextos_financeiros WHERE id = ?', [id])[0]?.values ?? [];
+  return rows[0] || null;
+}
+
+export function atualizarContexto(db, { id, nome, descricao }) {
+  if (!Number.isInteger(id)) throw new Error('id obrigatorio.');
+  const ctx = obterContexto(db, id);
+  if (!ctx) throw new Error('Contexto nao encontrado.');
+  const novoNome = (nome ?? ctx[1]).trim();
+  const novaDescricao = (descricao ?? ctx[2]).trim();
+  if (!novoNome) throw new Error('Nome do contexto nao pode ser vazio.');
+  db.run('UPDATE contextos_financeiros SET nome = ?, descricao = ? WHERE id = ?', [novoNome, novaDescricao, id]);
+  return id;
+}
+
+export function alternarContextoAtivo(db, id) {
+  if (!Number.isInteger(id)) throw new Error('id obrigatorio.');
+  const ctx = obterContexto(db, id);
+  if (!ctx) throw new Error('Contexto nao encontrado.');
+  const novoAtivo = ctx[3] ? 0 : 1;
+  db.run('UPDATE contextos_financeiros SET ativo = ? WHERE id = ?', [novoAtivo, id]);
+  return novoAtivo === 1;
+}
+
+/** Retorna saldos agregados do contexto: total receitas, despesas, contas, clientes, etc. */
+export function resumoContexto(db, contextoId) {
+  if (!Number.isInteger(contextoId)) return null;
+  const out = { contextoId };
+  const rec = db.exec('SELECT COALESCE(SUM(valor_centavos),0) FROM lancamentos WHERE contexto_id = ? AND natureza = ? AND status != ?', [contextoId, 'receita', 'estornado'])[0]?.values?.[0]?.[0] ?? 0;
+  const desp = db.exec('SELECT COALESCE(SUM(valor_centavos),0) FROM lancamentos WHERE contexto_id = ? AND natureza = ? AND status != ?', [contextoId, 'despesa', 'estornado'])[0]?.values?.[0]?.[0] ?? 0;
+  out.receitas = Number(rec);
+  out.despesas = Number(desp);
+  out.saldo = out.receitas - out.despesas;
+  out.lancamentos = Number(db.exec('SELECT COUNT(*) FROM lancamentos WHERE contexto_id = ?', [contextoId])[0]?.values?.[0]?.[0] ?? 0);
+  out.contas = Number(db.exec('SELECT COUNT(*) FROM contas WHERE contexto_id = ? AND ativo = 1', [contextoId])[0]?.values?.[0]?.[0] ?? 0);
+  out.clientes = Number(db.exec('SELECT COUNT(*) FROM clientes WHERE contexto_id = ? AND ativo = 1', [contextoId])[0]?.values?.[0]?.[0] ?? 0);
+  out.projetos = Number(db.exec('SELECT COUNT(*) FROM projetos WHERE contexto_id = ? AND ativo = 1', [contextoId])[0]?.values?.[0]?.[0] ?? 0);
+  return out;
 }
 
 export function criarConta(db, { contextoId, nome, tipo = 'bancaria', saldoInicialCentavos = 0 }) {

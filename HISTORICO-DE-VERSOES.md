@@ -1,4 +1,30 @@
 
+## 0.8.0 — Fase 1 (Contextos UI) + validação end-to-end do auto-update
+
+- **Fase 1 do plano** (item 3.1 do `PROJETO-COMPLETO-E-PLANO-DE-EXECUCAO-MLOPES-FINANCE.md`, "Contextos financeiros" exposta na UI):
+  - **`src/js/backend/core/financeiro.js`** — 5 funções novas em cima do CRUD de contextos (que existia no schema desde a v0.5.0 mas só era acessível via backend direto):
+    - `listarContextos(db, incluirInativos)` — lista contextos com `incluirInativos` (default `false`)
+    - `obterContexto(db, id)` — busca 1 contexto por id
+    - `atualizarContexto(db, { id, nome, descricao })` — só edita nome/descrição; `ativo` continua sendo gerenciado por `alternarContextoAtivo`
+    - `alternarContextoAtivo(db, id)` — flip do flag `ativo`
+    - `resumoContexto(db, contextoId)` — agregado: `receitas`, `despesas`, `saldo`, `lancamentos`, `contas`, `clientes`, `projetos` (todos em centavos)
+  - **Seed automatico de categoria "Transferência interna"**: ao chamar `criarContexto()`, agora cria tambem uma categoria com `natureza = 'ambas'` e nome `"Transferência interna"`, no mesmo contexto. Garante que o fluxo de transferencia entre contas do contexto sempre tenha uma categoria padrao disponivel.
+  - **5 rotas novas no `servidor.js`**: `contextos:listar` (com `incluirInativos`), `contextos:obter`, `contextos:atualizar`, `contextos:alternarAtivo`, `contextos:resumo`.
+  - **`src/js/telas/contextos.js`** (UI, ~6.6 KB): tela CRUD de contextos. Tabela com nome/descricao/receitas/despesas/saldo/lancamentos/status (Ativo/Inativo)/acoes (Usar/Editar/Desativar). Checkbox "Mostrar inativos" persiste em `sessionStorage`. Botao "Novo contexto" no topo abre modal de cadastro. Edicao reusa o mesmo modal. Tudo no padrao visual ml-* (`.panel`, `.field-row`, `.field-label`, `.pill`, `.btn-primary`).
+  - **Item "Contextos" no sidebar** entre "Categorias" e "Configuracoes" (13a tela do nav, era 12 na v0.7.1).
+  - **Pill seletor de contexto no header** (`<select>` estilizado como `.pill.contexto-select`): substitui a label estatica "Meu contexto" da v0.7.1. Ao trocar, chama `trocarContextoAtivo(novoId, api)` que atualiza o `ativo` no DB e recarrega a view atual sem precisar reabrir o app.
+  - **CSS** (~20 linhas adicionadas): `.pill.contexto-select` (mesmo visual das outras pills do header, mas com `<select>` real por baixo) + `.pill.is-static.contexto-label` (label de "Contexto:" antes do select).
+- **5 testes novos** (era 29, agora **34/34 verde**): seed automatico de categoria, listar com filtro inativos, atualizar nome/descricao, alternar ativo, resumo agregado.
+- **Bump 0.7.1 → 0.8.0** em 5 lugares: `neutralino.config.json`, `package.json`, `src/js/app.js`, `src/js/backend/ambiente.js` (logs/inst), `installer/MLopesFinance.iss`. Encoding UTF-8 sem BOM mantido.
+- **Smoke test**: silent install OK, ProductVersion `0.8.0` confirmada no `.exe`, app abre, topbar mostra "Contexto: ▼" + "VERSÃO 0.8.0", item "Contextos" no sidebar entre "Categorias" e "Configurações".
+- **Proxima versao (v0.9.0 — backlog)**:
+  - **Refatorar "Conta" como pessoa** (PF/PJ): `contas.pessoa TEXT DEFAULT 'mista'` + UI de cadastro.
+  - **Parcelamentos com projecao**: entidade `parcelamentos` (v5) + endpoint `parcelamentos:projecaoFutura(contextoId, meses)`.
+  - **Regime de caixa** (relatorio opcional de fluxo de caixa por data de pagamento da tabela `baixas`).
+  - **Checkbox "Iniciar ao finalizar"** no instalador.
+  - **Conciliacao bancaria automatica** com pareamento data+valor+descricao.
+  - **Fluxo comercial** (orcamento → aprovacao → contrato → recebimentos).
+
 ## 0.7.1 — Auto-update via GitHub Releases (Fase Hardening)
 
 - **Auto-update via GitHub Releases** com aviso automatico na tela (padrao dos outros softwares ML Lopes Design):

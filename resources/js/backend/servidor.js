@@ -1,4 +1,4 @@
-import { criarCategoria, criarConta, criarContexto } from './core/financeiro.js';
+import { criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto } from './core/financeiro.js';
 import { conciliarLancamento, criarLancamento, resumo } from './core/lancamentos.js';
 import { getAllConfig, getConfig, setConfig, deleteConfig, resetConfig } from './core/configuracoes.js';
 import { criarBackup, radiografar, restaurarBackup, validarCiclo } from './core/backup.js';
@@ -13,8 +13,12 @@ import { checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, compararVersa
 
 export function criarApi(db, persistir = () => {}) {
   const rotas = {
-    'contextos:listar': () => db.exec('SELECT * FROM contextos_financeiros WHERE ativo = 1 ORDER BY nome')[0]?.values ?? [],
+    'contextos:listar': (d = {}) => listarContextos(db, d.incluirInativos === true),
+    'contextos:obter': (d) => obterContexto(db, d.id),
     'contextos:criar': (d) => { const id = criarContexto(db, d); persistir(); return id; },
+    'contextos:atualizar': (d) => { atualizarContexto(db, d); persistir(); return true; },
+    'contextos:alternarAtivo': (d) => { const r = alternarContextoAtivo(db, d.id); persistir(); return r; },
+    'contextos:resumo': (d) => resumoContexto(db, d.contextoId),
     'contas:listar': (d) => db.exec('SELECT * FROM contas WHERE contexto_id = ? AND ativo = 1 ORDER BY nome', [d.contextoId])[0]?.values ?? [],
     'contas:criar': (d) => { const id = criarConta(db, d); persistir(); return id; },
     'categorias:listar': (d) => db.exec('SELECT * FROM categorias WHERE contexto_id = ? AND ativo = 1 ORDER BY nome', [d.contextoId])[0]?.values ?? [],

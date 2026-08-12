@@ -1,6 +1,6 @@
-﻿# Manual do Usuário — MLopes Finance v0.7.1
+# Manual do Usuário — MLopes Finance v0.8.0
 
-Bem-vindo ao **MLopes Finance**, o sistema de gestão financeira pessoal e empresarial para Windows 10/11, 100% local e auditável. Este manual cobre a versão **0.7.1**.
+Bem-vindo ao **MLopes Finance**, o sistema de gestão financeira pessoal e empresarial para Windows 10/11, 100% local e auditável. Este manual cobre a versão **0.8.0**.
 
 ---
 
@@ -8,14 +8,17 @@ Bem-vindo ao **MLopes Finance**, o sistema de gestão financeira pessoal e empre
 
 O MLopes Finance é um aplicativo de gestão financeira que roda **100% local** no seu computador. Seus dados ficam em `%APPDATA%\MLopesFinance\dados\mlopes-finance.sqlite` e **nunca saem da sua máquina** — não tem servidor, não tem nuvem, não tem telemetria.
 
-### O que ele faz (v0.6.0)
+### O que ele faz (v0.8.0)
 
 - Lançamentos de receitas, despesas e transferências entre contas.
+- **Contextos financeiros** (Pessoal, ML Lopes Design, etc.) com seletor no header, saldos isolados e CRUD completo pela UI.
 - Cadastros editáveis: contas, clientes, fornecedores, projetos, centros de custo, tags e categorias.
 - Baixas parciais e totais com controle automático de saldo.
 - Recorrências (mensal, semanal, anual, etc.).
 - Cartões de crédito com faturas por ciclo.
 - **Importação de extratos OFX/CSV** com detecção automática de duplicidades.
+- **Relatórios e balancete** por período/agrupamento, com comparativo do período anterior e export CSV/PDF.
+- **Auto-update via GitHub Releases** com aviso automático na tela e atualização em 1 clique.
 - **Backup e restauração** do banco via interface gráfica.
 - Tema claro/escuro e cor da marca customizáveis.
 - Configurações persistentes por instalação.
@@ -86,7 +89,7 @@ Para cada lançamento, o app calcula `valor_original - soma(baixas)`. A coluna "
 
 ## 4. Navegação
 
-A barra lateral esquerda tem **12 itens** + Configurações no rodapé:
+A barra lateral esquerda tem **13 itens** + Configurações no rodapé:
 
 | Item | O que faz |
 |---|---|
@@ -95,6 +98,7 @@ A barra lateral esquerda tem **12 itens** + Configurações no rodapé:
 | **Importar extrato** | Importar OFX/CSV do banco com prévia e detecção de duplicidades. |
 | **Transferências** | Lista de débitos+créditos vinculados entre contas. |
 | **Baixas e saldos** | Lista de lançamentos não-estornados com saldo em aberto e botão "Lançar baixa". |
+| **Relatórios** | Balancete por período/agrupamento com comparativo e export CSV/PDF. |
 | **Contas** | Cadastro de contas (bancária, cartão, investimento). |
 | **Clientes** | Cadastro de clientes. |
 | **Fornecedores** | Cadastro de fornecedores. |
@@ -102,7 +106,8 @@ A barra lateral esquerda tem **12 itens** + Configurações no rodapé:
 | **Centros de custo** | Cadastro de centros de custo. |
 | **Tags** | Cadastro de tags (vinculáveis a lançamentos). |
 | **Categorias** | Cadastro de categorias (receita, despesa ou ambas). |
-| **Configurações** | Aparência (tema, cor da marca), Identidade (nome, locale), Financeiro (moeda), Avançado (reset + backup). |
+| **Contextos** | CRUD de contextos financeiros (Pessoal, PJ, etc.) + seletor de contexto ativo no header. |
+| **Configurações** | Aparência (tema, cor da marca), Identidade (nome, locale), Financeiro (moeda), Avançado (reset + backup + atualizações). |
 
 ---
 
@@ -162,7 +167,7 @@ A barra lateral esquerda tem **12 itens** + Configurações no rodapé:
 
 ### 5.7 Alternar tema (claro/escuro)
 
-1. **Pill** "☾ Escuro" (ou "☀ Claro") no topo da janela, ao lado de "VERSÃO 0.6.0".
+1. **Pill** "☾ Escuro" (ou "☀ Claro") no topo da janela, ao lado de "VERSÃO 0.8.0".
 2. Clique. A página recarrega no outro tema. A escolha é salva no banco.
 
 ### 5.8 Mudar a cor da marca
@@ -233,7 +238,7 @@ O backup é a forma mais segura de migrar entre máquinas, ou de ter um ponto de
 
 ## 10. Versão
 
-Este manual cobre a **v0.6.0**. Funcionalidades das próximas versões (conciliação automática, comercial, relatórios avançados, NFS-e) virão em releases futuros. Veja `HISTORICO-DE-VERSOES.md` no diretório do projeto.
+Este manual cobre a **v0.8.0**. Funcionalidades das próximas versões (conciliação automática, comercial, NFS-e) virão em releases futuros. Veja `HISTORICO-DE-VERSOES.md` no diretório do projeto.
 
 ## 11. Relatórios e balancete (v0.7.0)
 
@@ -291,3 +296,77 @@ O MLopes Finance verifica novas versões no GitHub Releases automaticamente:
 2. Push do source + tag `v0.7.1`
 3. Criar uma Release com o `MLopes Finance Setup.exe` como asset
 4. O user, ao abrir o app na v0.7.0 ou anterior, recebe a notificação automaticamente.
+
+---
+
+## 13. Contextos financeiros (v0.8.0)
+
+Um **contexto financeiro** é uma "bolha" isolada de dados: cada contexto tem seus próprios lançamentos, contas, clientes, projetos, centros de custo, tags e categorias. Os saldos **nunca se misturam** entre contextos.
+
+### 13.1 Pra que serve
+
+Imagine que você é **Marcio Lopes (PF)** e tem a empresa **ML Lopes Design (PJ)**. Sem contextos, os saldos se misturariam: a receita do cliente X (PJ) apareceria junto com seu salário (PF), e a despesa do aluguel (PF) seria descontada do caixa da empresa.
+
+Com contextos, cada um tem seu próprio espaço:
+
+- **Contexto "Pessoal"**: salário, aluguel, cartão pessoal, contas de luz/internet residenciais.
+- **Contexto "ML Lopes Design"**: recebimentos de clientes PJ, notas fiscais, folha, impostos, investimentos da empresa.
+
+### 13.2 O seletor de contexto no header
+
+No topo da janela, ao lado de "VERSÃO 0.8.0", você vê a **pill "Contexto: [▼]"** com o nome do contexto ativo. Trocar de contexto é instantâneo — sem reload, sem reabrir o app.
+
+O contexto ativo define:
+
+- Quais lançamentos aparecem em **Lançamentos**, **Baixas e saldos**, **Transferências**.
+- Quais contas aparecem no select de **Novo lançamento**.
+- Qual saldo o **Relatórios** mostra.
+- Quais cadastros (clientes, projetos, etc.) estão visíveis.
+
+### 13.3 Tela de Contextos
+
+Acesse **Contextos** no menu lateral (entre "Categorias" e "Configurações"). A tela mostra uma tabela com:
+
+| Coluna | O que mostra |
+|---|---|
+| **Contexto** | Nome + descrição. |
+| **Receitas** | Total de receitas no contexto. |
+| **Despesas** | Total de despesas no contexto. |
+| **Saldo** | Receitas − despesas. |
+| **Lançamentos** | Quantidade de lançamentos cadastrados. |
+| **Status** | Ativo (verde) ou Inativo (cinza). |
+| **Ações** | Usar (torna contexto ativo), Editar (nome/descrição), Desativar/Reativar. |
+
+No topo da tela tem o checkbox **"Mostrar inativos"** — quando marcado, contextos desativados aparecem na lista com status cinza.
+
+### 13.4 Criar um contexto novo
+
+1. **Contextos** → **Novo contexto**.
+2. Preencha **Nome** (obrigatório) e **Descrição** (opcional).
+3. **Salvar**. O contexto é criado e automaticamente:
+   - Vira o **contexto ativo**.
+   - Ganha uma categoria seed **"Transferência interna"** (natureza: ambas) — usada para transferências entre contas do mesmo contexto.
+   - Aparece no seletor do header.
+
+### 13.5 Desativar vs apagar
+
+Contextos **nunca são apagados** se tiverem lançamentos vinculados (regra de auditoria). Em vez disso, você **desativa** — o contexto some do seletor e do select de cadastros, mas o histórico fica preservado para relatórios e consultas.
+
+Para desativar: **Contextos** → linha do contexto → **Desativar**. Para reativar: marque **"Mostrar inativos"** e clique em **Reativar**.
+
+### 13.6 Transferência entre contextos
+
+**Não existe.** Transferências são apenas entre contas do **mesmo contexto**. Pra mover dinheiro de um contexto pra outro (ex: pró-labore da empresa pra conta pessoal), use um par de lançamentos manuais:
+
+1. Contexto "ML Lopes Design" → **Lançamentos** → **Novo lançamento** → Despesa de R$ X na conta da empresa.
+2. Contexto "Pessoal" → **Lançamentos** → **Novo lançamento** → Receita de R$ X na conta pessoal.
+
+(Regra 3 do plano: toda linha financeira pertence a um contexto, e transferência entre contextos é uma decisão de negócio, não do app.)
+
+### 13.7 Contexto padrão
+
+Ao instalar pela primeira vez, o app cria um contexto chamado **"Meu contexto"**. Esse é o contexto ativo inicial e não pode ser apagado (mas pode ser renomeado). Use-o como "Pessoal" ou renomeie para o nome que preferir.
+
+---
+
+*MLopes Finance v0.8.0 — Fevereiro/Agosto 2026 — ML Lopes Design*

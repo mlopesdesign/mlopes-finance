@@ -6,9 +6,10 @@ import { renderConfiguracoes } from './telas/configuracoes.js';
 import { renderCadastroGenerico } from './telas/cadastros-generico.js';
 import { renderImportacao } from './telas/importacao.js';
 import { renderRelatorios } from './telas/relatorios.js';
+import { renderContextos } from './telas/contextos.js';
 import * as updUI from './update.js';
 
-const APP_VERSION = '0.7.1';
+const APP_VERSION = '0.8.0';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = [];
 const $ = (s) => document.querySelector(s); const app = $('#app');
@@ -162,10 +163,42 @@ function render(view) {
   if (view === 'baixas') return renderBaixas();
   if (view === 'relatorios') return renderRelatorios(contextoId, api);
   if (view === 'importacao') return renderImportacao(contextoId, api);
+  if (view === 'contextos') return renderContextos(contextoId, api, (novoId) => trocarContextoAtivo(novoId, api));
   if (view === 'configuracoes') return renderConfiguracoes(contextoId, api);
   return renderDashboard();
 }
 
+
+// Renderiza o seletor de contexto ativo no header (pill "Contexto: [▼]")
+function renderHeaderPillContexto() {
+  const actions = document.getElementById('topbar-actions');
+  if (!actions || !api) return;
+  // Remove pill antiga
+  const old = document.getElementById('contexto-pill');
+  if (old) old.remove();
+  const contextos = api('contextos:listar', {});
+  if (!contextos.length) return;
+  const atual = contextos.find(c => c[0] === contextoId);
+  const nomeAtual = atual ? atual[1] : '—';
+  const pill = document.createElement('select');
+  pill.id = 'contexto-pill';
+  pill.className = 'pill contexto-select';
+  pill.title = 'Trocar de contexto financeiro';
+  for (const c of contextos) {
+    const opt = document.createElement('option');
+    opt.value = c[0];
+    opt.textContent = c[1];
+    if (c[0] === contextoId) opt.selected = true;
+    pill.appendChild(opt);
+  }
+  pill.onchange = (e) => trocarContextoAtivo(Number(e.target.value), api);
+  // Adiciona no inicio (antes dos outros pills)
+  const label = document.createElement('span');
+  label.className = 'pill is-static contexto-label';
+  label.textContent = 'Contexto:';
+  actions.insertBefore(label, actions.firstChild);
+  actions.insertBefore(pill, actions.firstChild);
+}
 function renderDashboard() {
   const s = api('dashboard:resumo', { contextoId });
   const totClientes = api('clientes:listar', { contextoId }).length;
@@ -257,3 +290,14 @@ boot().catch((e) => {
   setStatus('Falha: ' + (e?.message || e));
   if (app) app.innerHTML = `<div class="error"><strong>Falha ao iniciar</strong><br>${String(e?.message || e).replaceAll('<', '&lt;')}<br><small>Log salvo em mlopes-boot.log (mesma pasta do banco).</small></div>`;
 });
+
+function trocarContextoAtivo(novoId, api) {
+  if (!Number.isInteger(novoId)) return;
+  contextoId = novoId;
+  // Recarrega dashboard no novo contexto
+  const view = document.querySelector('.nav-button.active')?.dataset?.view || 'dashboard';
+  render(view);
+  // Re-renderiza o seletor de contexto no header
+  renderHeaderPillContexto();
+  // Re-checa auto-update (nao muda nada, mas boa pratica)
+}

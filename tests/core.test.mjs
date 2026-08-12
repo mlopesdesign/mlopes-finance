@@ -534,3 +534,65 @@ test('update: extrairTagVersion remove prefixo v', () => {
   assert.equal(extrairTagVersion(''), null);
   assert.equal(extrairTagVersion(undefined), null);
 });
+import { listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto } from '../src/js/backend/core/financeiro.js';
+
+test('contextos: criarContexto gera seed de categoria Transferencia', async () => {
+  const db = await novoBanco();
+  const id = criarContexto(db, { nome: 'ML Lopes Design' });
+  assert.equal(typeof id, 'number');
+  const cats = db.exec('SELECT nome, natureza FROM categorias WHERE contexto_id = ?', [id])[0]?.values ?? [];
+  assert.equal(cats.length, 1);
+  assert.equal(cats[0][0], 'Transferência interna');
+  assert.equal(cats[0][1], 'ambas');
+});
+
+test('contextos: listarContextos retorna apenas ativos por default', async () => {
+  const db = await novoBanco();
+  const id1 = criarContexto(db, { nome: 'Ativo 1' });
+  const id2 = criarContexto(db, { nome: 'Ativo 2' });
+  const id3 = criarContexto(db, { nome: 'Inativo' });
+  alternarContextoAtivo(db, id3); // desativa
+  const ativos = listarContextos(db, false);
+  assert.equal(ativos.length, 2);
+  const todos = listarContextos(db, true);
+  assert.equal(todos.length, 3);
+  const nomes = ativos.map(r => r[1]).sort();
+  assert.deepEqual(nomes, ['Ativo 1', 'Ativo 2']);
+});
+
+test('contextos: atualizarContexto muda nome e descricao', async () => {
+  const db = await novoBanco();
+  const id = criarContexto(db, { nome: 'Original', descricao: 'desc' });
+  atualizarContexto(db, { id, nome: 'Novo nome', descricao: 'nova desc' });
+  const ctx = obterContexto(db, id);
+  assert.equal(ctx[1], 'Novo nome');
+  assert.equal(ctx[2], 'nova desc');
+});
+
+test('contextos: alternarContextoAtivo alterna ativo e preserva dados', async () => {
+  const db = await novoBanco();
+  const id = criarContexto(db, { nome: 'Teste' });
+  const ctx0 = obterContexto(db, id);
+  assert.equal(ctx0[3], 1); // ativo
+  const result1 = alternarContextoAtivo(db, id);
+  assert.equal(result1, false);
+  assert.equal(obterContexto(db, id)[3], 0);
+  const result2 = alternarContextoAtivo(db, id);
+  assert.equal(result2, true);
+  assert.equal(obterContexto(db, id)[3], 1);
+});
+
+test('contextos: resumoContexto agrega receitas/despesas/contas', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'PJ' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Banco', tipo: 'bancaria' });
+  const cat = criarCategoria(db, { contextoId: cid, nome: 'Vendas', natureza: 'receita' });
+  criarLancamento(db, { contextoId: cid, contaId, categoriaId: cat, natureza: 'receita', valorCentavos: 100000, dataCompetencia: '2026-08-01', descricao: 'A' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 30000, dataCompetencia: '2026-08-02', descricao: 'B' });
+  const r = resumoContexto(db, cid);
+  assert.equal(r.receitas, 100000);
+  assert.equal(r.despesas, 30000);
+  assert.equal(r.saldo, 70000);
+  assert.equal(r.lancamentos, 2);
+  assert.equal(r.contas, 1);
+});

@@ -244,3 +244,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--brand); out
 .modal-body .modal-meta code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 12px; }
 .modal-body .changelog { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.5; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
 .modal-actions { padding: 14px 20px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ===== CONTEXTOS (v0.8.0) ===== */
+.pill.contexto-select { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); padding: 4px 10px; border-radius: 999px; font-size: 13px; font-family: inherit; cursor: pointer; }
+.pill.contexto-select:hover { background: var(--brand-soft); border-color: var(--brand); }
+.pill.is-static.contexto-label { background: transparent; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; padding: 0 4px 0 0; }
