@@ -1,0 +1,44 @@
+{
+  "applicationId": "com.mlopesdesign.mlopesfinance",
+  "version": "0.4.1",
+  "url": "/",
+  "documentRoot": "/resources/",
+  "defaultMode": "window",
+  "port": 0,
+  "enableServer": true,
+  "enableNativeAPI": true,
+  "tokenSecurity": "one-time",
+  "nativeAllowList": [
+    "app.*",
+    "os.*",
+    "filesystem.*"
+  ],
+  "modes": {
+    "window": {
+      "title": "MLopes Finance",
+      "width": 1280,
+      "height": 820,
+      "minWidth": 980,
+      "minHeight": 640,
+      "resizable": true,
+      "fullScreen": false,
+      "alwaysOnTop": false,
+      "hidden": false,
+      "borderless": false,
+      "maximize": false,
+      "icon": "/resources/icons/appIcon.png"
+    }
+  },
+  "cli": {
+    "binaryName": "MLopesFinance",
+    "resourcesPath": "/resources",
+    "frontendLibrary": "neutralino.js",
+    "clientLibrary": "neutralino.js",
+    "binaryVersion": "6.9.0",
+    "clientVersion": "6.9.0"
+  },
+  "applicationName": "MLopes Finance",
+  "applicationIcon": "resources/icons/appIcon.png"
+}
+
+

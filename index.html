@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MLopes Finance</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><strong>MLopes Finance</strong><span class="muted">Finanças locais e auditáveis</span></div>
+    <div id="status" class="status">Inicializando banco local...</div>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Menu principal">
+      <button class="nav-button active" data-view="dashboard">Visão geral</button>
+      <button class="nav-button" data-view="lancamentos">Lançamentos</button>
+      <button class="nav-button" data-view="contas">Contas</button>
+      <button class="nav-button" data-view="categorias">Categorias</button>
+    </nav>
+  <main id="app" class="content"></main>
+  </div>
+  <script src="js/vendor/neutralino.js"></script>
+  <script src="js/vendor/sql-wasm.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

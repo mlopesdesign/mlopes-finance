@@ -1,0 +1,12 @@
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+const root = process.cwd();
+const portable = spawnSync(process.execPath, [path.join(root, 'scripts', 'build-portable.mjs')], { cwd: root, stdio: 'inherit' });
+if (portable.status !== 0) process.exit(portable.status ?? 1);
+const iscc = process.env.ISCC_PATH || 'C:\\Users\\mlope\\AppData\\Local\\Programs\\Inno Setup 6\\ISCC.exe';
+if (!fs.existsSync(iscc)) throw new Error(`ISCC.exe não encontrado em ${iscc}. Defina ISCC_PATH.`);
+fs.mkdirSync(path.join(root, 'release'), { recursive: true });
+const result = spawnSync(iscc, [path.join(root, 'installer', 'MLopesFinance.iss')], { cwd: root, stdio: 'inherit' });
+if (result.status !== 0) process.exit(result.status ?? 1);
+console.log('Instalador gerado em release/MLopes Finance Setup.exe');

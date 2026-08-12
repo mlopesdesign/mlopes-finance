@@ -1,0 +1,162 @@
+{
+  "E:\\Projetos\\MLOPES FINANCE\\neutralino.d.ts": {
+    "mtime": 1786488469.7565367,
+    "hash": "b9138ea1596b5e428b4333804d3b90f6"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\neutralino.js": {
+    "mtime": 1786488469.3850365,
+    "hash": "cd1291b93d03ed276aa5fbccd47533ad"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\resources\\js\\app.js": {
+    "mtime": 1786490100.8363612,
+    "hash": "aa19b6daecb3255a99cd4984d33d66b1"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\resources\\js\\backend\\ambiente.js": {
+    "mtime": 1786489145.837914,
+    "hash": "dcbe0d215d24f1a709335be45e732612"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\resources\\js\\backend\\db.js": {
+    "mtime": 1786488222.934034,
+    "hash": "0f5b5bb2f4fa946f55ad9468d766a6b0"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\resources\\js\\backend\\migracoes.js": {
+    "mtime": 1786488222.934034,
+    "hash": "7036812fdb5bebcef452eb894b91dc4c"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\resources\\js\\backend\\schema.sql": {
+    "mtime": 1786488222.932486,
+    "hash": "e40500af7c34c447deaa2df8e7e6b347"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\resources\\js\\backend\\servidor.js": {
+    "mtime": 1786488222.934034,
+    "hash": "636e2697936bba123bdff07c471b645b"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\resources\\js\\backend\\core\\financeiro.js": {
+    "mtime": 1786488222.9309156,
+    "hash": "7d3d7bef1963856037a0b733d1842558"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\resources\\js\\backend\\core\\lancamentos.js": {
+    "mtime": 1786488222.932486,
+    "hash": "1c285a11fb5c3eab4f38bc0033ade2bf"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\resources\\js\\vendor\\neutralino.js": {
+    "mtime": 1786488469.3850365,
+    "hash": "cd1291b93d03ed276aa5fbccd47533ad"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\resources\\js\\vendor\\sql-wasm.js": {
+    "mtime": 1786488275.9279041,
+    "hash": "bb5308ce4d65bf572e24c96aeb3d8e54"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\scripts\\build-installer.mjs": {
+    "mtime": 1786488702.8763187,
+    "hash": "9e70f8dfa4ce43715b3a42ee4e5af532"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\scripts\\build-portable.mjs": {
+    "mtime": 1786488681.3835733,
+    "hash": "04bde16ae31b98b41d3e324f5570c846"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\scripts\\verify-installer.mjs": {
+    "mtime": 1786488594.4659445,
+    "hash": "a14327f5efb2c6467f81124e672a40b9"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\src\\js\\app.js": {
+    "mtime": 1786490100.8363612,
+    "hash": "aa19b6daecb3255a99cd4984d33d66b1"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\src\\js\\backend\\ambiente.js": {
+    "mtime": 1786489145.837914,
+    "hash": "dcbe0d215d24f1a709335be45e732612"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\src\\js\\backend\\db.js": {
+    "mtime": 1786488222.934034,
+    "hash": "0f5b5bb2f4fa946f55ad9468d766a6b0"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\src\\js\\backend\\migracoes.js": {
+    "mtime": 1786488222.934034,
+    "hash": "7036812fdb5bebcef452eb894b91dc4c"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\src\\js\\backend\\schema.sql": {
+    "mtime": 1786488222.932486,
+    "hash": "e40500af7c34c447deaa2df8e7e6b347"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\src\\js\\backend\\servidor.js": {
+    "mtime": 1786488222.934034,
+    "hash": "636e2697936bba123bdff07c471b645b"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\src\\js\\backend\\core\\financeiro.js": {
+    "mtime": 1786488222.9309156,
+    "hash": "7d3d7bef1963856037a0b733d1842558"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\src\\js\\backend\\core\\lancamentos.js": {
+    "mtime": 1786488222.932486,
+    "hash": "1c285a11fb5c3eab4f38bc0033ade2bf"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\tests\\core.test.mjs": {
+    "mtime": 1786489067.9876604,
+    "hash": "4ec1b5da9c45a5af803919535d24b109"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\tools\\build-resources.mjs": {
+    "mtime": 1786489499.3820288,
+    "hash": "b1e5ae927545910ae9a0aede8f85311e"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\tools\\check.mjs": {
+    "mtime": 1786488540.613111,
+    "hash": "f9b79aed97d1fc29b385a16b1ebc81d6"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\AGENTS-BASE-PROJETO-NOVO.md": {
+    "mtime": 1786384444.76736,
+    "hash": "9d320cd6fa51e7f570aff3eb8709cdb1"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\AGENTS.md": {
+    "mtime": 1786485122.460492,
+    "hash": "c10f3a391625e5eda47b4acc4eec3e29"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\ENTREGA-TRANSICAO-MLOPES-FINANCE.md": {
+    "mtime": 1786483931.534486,
+    "hash": "44d2eccdb7a44e7f21d57c976b4e3e13"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\HISTORICO-DE-VERSOES.md": {
+    "mtime": 1786489950.7377753,
+    "hash": "b3eb8e8ccf5f255089f891778fde2118"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\index.html": {
+    "mtime": 1786489657.9041686,
+    "hash": "4d50d4201bd0e74ecac4f2b0aff9a958"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\PADRAO-ML-LOPES-DESIGN.md": {
+    "mtime": 1786384444.700559,
+    "hash": "7e18b88fcf357540526a8e4f0e1b6f60"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\docs\\ESPECIFICACAO-FUNCIONAL.md": {
+    "mtime": 1786488540.6164272,
+    "hash": "f18bda8de6bc18521c9291ead5c7b918"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\docs\\GUIA-RAPIDO.md": {
+    "mtime": 1786488540.6179628,
+    "hash": "bbacbd36fcea477ed5590ffa82156a2b"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\docs\\MANUAL-DO-USUARIO.md": {
+    "mtime": 1786488540.6164272,
+    "hash": "e5a638d680783a428073376825550b6d"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\resources\\index.html": {
+    "mtime": 1786489238.6494346,
+    "hash": "4d50d4201bd0e74ecac4f2b0aff9a958"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\src\\index.html": {
+    "mtime": 1786489238.6494346,
+    "hash": "4d50d4201bd0e74ecac4f2b0aff9a958"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\_app-screen.png": {
+    "mtime": 1786489707.5094342,
+    "hash": "809ac879b161f5bee7f12c34b1418229"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\resources\\icons\\appIcon.svg": {
+    "mtime": 1786489499.379427,
+    "hash": "906ba55965da6a60e1006ef4abebcce7"
+  },
+  "E:\\Projetos\\MLOPES FINANCE\\src\\icons\\appIcon.svg": {
+    "mtime": 1786489499.379427,
+    "hash": "906ba55965da6a60e1006ef4abebcce7"
+  }
+}

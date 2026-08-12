@@ -1,0 +1,89 @@
+/* MLopes Finance — tema dinâmico
+ * Light é o :root default (compat com CSS sem JS).
+ * Dark é opt-in via [data-theme="dark"] no <html>.
+ * Todas as cores/spaçamentos do app consomem essas variables.
+ */
+
+:root {
+  /* marca (oficial ml-* / ml-plugin-base v1.1.1) */
+  --brand:        #155e6f;
+  --brand-dark:   #114b5a;
+  --brand-soft:   #eaf5f7;
+
+  /* superficies (light) */
+  --bg:           #f4f6fa;
+  --surface:      #ffffff;
+  --surface-2:    #f8fafc;
+  --line:         #d9e2ec;
+  --line-strong:  #bfd6dc;
+
+  /* texto (light) */
+  --ink:          #102a43;
+  --muted:        #52606d;
+  --on-brand:     #ffffff;
+
+  /* status (light) */
+  --positivo:     #16803c;
+  --negativo:     #b42318;
+  --alerta:       #b45309;
+  --suave:        #e8f0fb;
+
+  /* raios e sombras */
+  --radius:       12px;
+  --radius-sm:    8px;
+  --radius-lg:    18px;
+  --shadow:       0 2px 8px rgba(16, 42, 67, .05);
+  --shadow-soft:  0 1px 2px rgba(16, 42, 67, .04);
+  --shadow-strong:0 10px 28px rgba(15, 102, 116, .12);
+
+  /* topbar (light - azul escuro) */
+  --topbar-bg:    #102a43;
+  --topbar-ink:   #ffffff;
+  --topbar-muted: rgba(255, 255, 255, .7);
+
+  /* sidebar (light) */
+  --sidebar-bg:   #ffffff;
+  --sidebar-ink:  #526173;
+  --sidebar-active-bg:  #e8f0fb;
+  --sidebar-active-ink: #145da0;
+
+  /* sombra da sidebar (light) */
+  color-scheme: light;
+}
+
+/* ===== DARK ===== */
+[data-theme="dark"] {
+  --brand:        #3a8aa0;
+  --brand-dark:   #2d6f82;
+  --brand-soft:   #0f2730;
+
+  --bg:           #0a1929;
+  --surface:      #0f2235;
+  --surface-2:    #142b42;
+  --line:         #1e3349;
+  --line-strong:  #2a4763;
+
+  --ink:          #e8edf2;
+  --muted:        #8a99ad;
+  --on-brand:     #ffffff;
+
+  --positivo:     #34d399;
+  --negativo:     #f87171;
+  --alerta:       #fbbf24;
+  --suave:        #1a3045;
+
+  --shadow:       0 2px 8px rgba(0, 0, 0, .3);
+  --shadow-soft:  0 1px 2px rgba(0, 0, 0, .2);
+  --shadow-strong:0 10px 28px rgba(0, 0, 0, .5);
+
+  --topbar-bg:    #07131f;
+  --topbar-ink:   #e8edf2;
+  --topbar-muted: rgba(232, 237, 242, .65);
+
+  --sidebar-bg:   #0a1929;
+  --sidebar-ink:  #a3b1c2;
+  --sidebar-active-bg:  #142b42;
+  --sidebar-active-ink: #3a8aa0;
+
+  color-scheme: dark;
+}

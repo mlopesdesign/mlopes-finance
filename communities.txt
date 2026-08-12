@@ -1,0 +1,26 @@
+C0 (27 nodes): DB: alta frequência usa runVolatil() (polling de 4s com | DB: validar backup = radiografar todas as tabelas + exi | DB: filesystem.move no Windows falha se destino existir | Pasta de dados: %APPDATA%/MLopesFinance/dados/ | Arquivo de banco: mlopes-finance.sqlite | Regra 6: tmp → atual.old → tmp para atual → remove old;
+C1 (20 nodes): Installer: ISCC.exe (Inno Setup 6) | Build: neu build --release (oficial Neutralino 6) | tools/build-resources.mjs: espelha src/ → resources/ pa | installer/MLopesFinance.iss (script Inno Setup) | build-installer.mjs | portable
+C2 (19 nodes): Schema.sql só tem 5 tabelas: meta, contextos, contas, c | Anexos (vinculado a lançamento) | Auditoria (rastreabilidade de toda ação) | Baixas (parciais não podem ultrapassar o aberto) | Cartões: fatura por ciclo, parcelas, limite, usado, dis | Categorias (receita/despesa/ambas)
+C3 (19 nodes): app.js | app | boot() | categorias | contas | formCategoria()
+C4 (18 nodes): Regra 2: toda UI passa por API; autorização no backend | Regra 4: valores em centavos inteiros, datas YYYY-MM-DD | Regra 5: lançamento conciliado não apaga nem altera (es | Regra 1: regra de negócio em core/, sem DOM/window/Neut | financeiro.js | criarCategoria()
+C5 (12 nodes): financeiro.js | criarCategoria() | criarConta() | criarContexto() | validarData() | validarValorCentavos()
+C6 (8 nodes): applicationId: com.mlopesdesign.mlopesfinance | binaryName: MLopesFinance | Stack: JS ES modules + Neutralino 6 + WebView2 + sql.js | neutralino.config.json (versão 0.2.2, applicationId, mo | PROIBIDO: Electron (vetado, quebrou versão anterior) | PROIBIDO: Java (exige runtime no cliente)
+C7 (7 nodes): DB: SQLite não altera CHECK; reconstruir tabela em tran | Branch é 'master', AGENTS.md seção 9 obriga 'main' | dist/ e release/ commitados (artefatos de build não dev | Repositorio git SEM COMMITS (.git existe mas master vaz | Versão 0.2.2 (atual) NAO está documentada no HISTORICO- | Regra 8: cada build sobe versão + testes + docs + mapa 
+C8 (4 nodes): v0.1.3: index.html referenciava /src/... em vez de /res | v0.1.5: neutralino.config.json sem url; carregava / enq | v0.3.2: build usa asar.createPackage (não oficial do Ne | v0.3.2 REPROVADO: instalador abre página default do Neu
+C9 (4 nodes): db.js | abrirBanco() | root | salvarBancoSeguro()
+C10 (4 nodes): verify-installer.mjs | dir | required | root
+C11 (4 nodes): db.js | abrirBanco() | root | salvarBancoSeguro()
+C12 (4 nodes): check.mjs | files | root | walk()
+C13 (2 nodes): v0.1.2: Neutralino.init() antes de registrar listener d | v0.1.9: app.js aguardava filesystem.writeFile antes de 
+C14 (2 nodes): GRAPHIFY.md não existe no projeto (mapa técnico nunca f | tools/graphify.mjs não existe (package.json script 'gra
+C15 (2 nodes): PROIBIDO: Tailwind ou CSS com compilador | PROIBIDO: Webpack, Vite, Rollup, Babel
+C16 (2 nodes): src/index.html (entry, BOM UTF-8, sidebar com 4 abas) | UI: index.html PRECISA de BOM UTF-8 + <meta charset>; s
+C17 (1 nodes): Updater: GH release → backup → curl → move /Y resources
+C18 (1 nodes): DB: ';' dentro de comentário no schema.sql parte o CREA
+C19 (1 nodes): Só 3 testes automatizados (criar/resumir/conciliar). Fa
+C20 (1 nodes): docs/ tem 3 docs vazios/minimos (GUIA-RAPIDO 271B, MANU
+C21 (1 nodes): src/icons/appIcon-candidato-01.png/svg é lixo de teste 
+C22 (1 nodes): Fiscal: módulo opcional/desacoplado (NFS-e por municípi
+C23 (1 nodes): PROIBIDO: dependência npm no código do cliente
+C24 (1 nodes): UI: aviso nunca só por som (máquina pode estar muda); p
+C25 (1 nodes): UI: <meta name="viewport"> sempre; inputs com font-size

@@ -1,0 +1,24 @@
+node_modules/
+dist/
+release/
+bin/
+*.log
+.tmp/
+.graphify_*
+run_*.py
+build_*.py
+inspect_*.py
+merge_*.py
+label_*.py
+finalize.py
+gen_html.py
+filter_ast.py
+proxy_*.py
+proxy_log.txt
+index.html  # raiz: snapshot de teste
+_app-screen.png
+resources/icons/appIcon-candidato-01.*
+resources/index.html
+resources/js/app.js
+resources/js/backend/ambiente.js
+# resources/ é gerado por build-resources.mjs; src/ é a fonte

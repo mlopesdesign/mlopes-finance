@@ -1,0 +1,22 @@
+{
+  "name": "mlopes-finance",
+  "version": "0.4.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check": "node tools/check.mjs",
+    "build:resources": "node tools/build-resources.mjs",
+    "build:portable": "node scripts/build-portable.mjs",
+    "build:installer": "node scripts/build-installer.mjs",
+    "graphify": "node tools/graphify.mjs"
+  },
+  "dependencies": {
+    "sql.js": "^1.13.0"
+  },
+  "devDependencies": {
+    "@neutralinojs/neu": "^11.0.0"
+  }
+}
+
+
