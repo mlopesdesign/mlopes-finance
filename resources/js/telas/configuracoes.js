@@ -12,7 +12,7 @@ let _contextoId = null;
 let _api = null;
 let _configCache = {};
 
-export function renderConfiguracoes(contextoId, api) {
+export function renderConfiguracoes(contextoId, api, dbPath = '') {
   _contextoId = contextoId;
   _api = api;
   _configCache = _api('configuracoes:listar');
@@ -93,6 +93,10 @@ export function renderConfiguracoes(contextoId, api) {
               <div><div class="field-label">Restaurar padrão</div><div class="field-help">Apaga todas as configurações e volta aos defaults.</div></div>
               <div><button class="button danger" id="cfg-reset">Restaurar padrão de fábrica</button></div>
             </div>
+            <div class="field-row">
+              <div><div class="field-label">Banco de dados</div><div class="field-help" id="cfg-db-path">Carregando…</div></div>
+              <div></div>
+            </div>
             <div id="cfg-backup-status" class="field-help" style="margin-top: 12px;"></div>
           </div>
         </section>
@@ -133,6 +137,10 @@ export function renderConfiguracoes(contextoId, api) {
     _configCache.marca_cor = { valor: e.target.value, tipo: 'cor' };
     aplicarPreview();
   };
+
+  // Path do banco (debug info)
+  const dbPathEl = document.getElementById('cfg-db-path');
+  if (dbPathEl) dbPathEl.textContent = dbPath || 'caminho nao disponivel';
 
   document.getElementById('cfg-salvar').onclick = salvar;
   document.getElementById('cfg-cancelar').onclick = () => location.reload();

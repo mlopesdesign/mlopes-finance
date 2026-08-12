@@ -25,6 +25,14 @@
   - **Conciliacao bancaria automatica** com pareamento data+valor+descricao.
   - **Fluxo comercial** (orcamento → aprovacao → contrato → recebimentos).
 
+## 0.8.1 — Limpa header + prepara terreno para o auto-update
+
+- **Tira o path do banco do header**: o `Versão 0.8.0 · C:\Users\mlope\AppData\Roaming\MLopesFinance\dados\mlopes-finance.sqlite` que aparecia no status (logo abaixo do topbar) foi removido. Era informacao de debug que poluia a visao geral. Agora o status so mostra `Versão 0.8.1`.
+- **Path do banco movido pra Configuracoes > Avancado**: novo campo "Banco de dados" com o path completo, visivel so quando o user precisa (ex: pra debug, suporte, ou pra localizar o arquivo pra backup manual).
+- **Bump 0.8.0 → 0.8.1** em 7 lugares (neutralino.config.json, package.json, src/js/app.js, src/js/backend/ambiente.js, resources/js/app.js, resources/js/backend/ambiente.js, installer/MLopesFinance.iss). Encoding UTF-8 sem BOM mantido, 34/34 testes verde.
+- **Por que 0.8.1 e nao 0.9.0**: a v0.8.0 ja saiu sem nunca ter sido validada visualmente (auto-update so funciona com uma versao acima da atual publicada no GitHub Releases). A v0.8.1 serve exatamente como "release gatilho" pra mostrar a notificação da pill amarela + banner no app que ainda esta na v0.8.0. Quando o user abrir o MLopes Finance agora (v0.8.0), vai ver a notificação de v0.8.1 e atualizar em 1 clique. Auto-update validado de v0.8.0 → v0.8.1.
+- **Apos esta release**: a v0.8.1 se torna a base, e qualquer mudanca real de feature ja pula pra v0.9.0 (Conta como pessoa, Parcelamentos, Regime de caixa, Checkbox "Iniciar ao finalizar", etc — backlog do plano).
+
 ## 0.7.1 — Auto-update via GitHub Releases (Fase Hardening)
 
 - **Auto-update via GitHub Releases** com aviso automatico na tela (padrao dos outros softwares ML Lopes Design):

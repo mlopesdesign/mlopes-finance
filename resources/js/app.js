@@ -9,9 +9,9 @@ import { renderRelatorios } from './telas/relatorios.js';
 import { renderContextos } from './telas/contextos.js';
 import * as updUI from './update.js';
 
-const APP_VERSION = '0.8.0';
+const APP_VERSION = '0.8.1';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
-let api; let contextoId; let contas = []; let categorias = [];
+let api; let contextoId; let contas = []; let categorias = []; let appDbPath = '';
 const $ = (s) => document.querySelector(s); const app = $('#app');
 const statusEl = () => document.getElementById('status');
 const setStatus = (msg) => { const s = statusEl(); if (s) s.textContent = msg; if (typeof document !== 'undefined') document.title = 'MLopes Finance — ' + msg; };
@@ -98,6 +98,7 @@ async function boot() {
 
   setStatus('Abrindo banco local...');
   const local = await comTimeout(abrirBancoLocal(SQL, schema), 15000, 'abrirBancoLocal');
+  appDbPath = local.arquivo;
   log('banco aberto em', local.arquivo);
 
   setStatus('Verificando migracoes...');
@@ -136,7 +137,7 @@ function renderHeader(dbPath) {
   const tema = cfg.tema?.valor || TEMA_DEFAULTS.tema;
   const status = document.getElementById('status');
   const actions = document.getElementById('topbar-actions');
-  if (status) status.textContent = `Versão ${APP_VERSION} · ${dbPath}`;
+  if (status) status.textContent = `Versão ${APP_VERSION}`;
   if (actions) {
     actions.innerHTML = `<button class="pill" id="toggle-tema" title="Alternar tema"><span class="dot"></span>${tema === 'dark' ? '☾ Escuro' : '☀ Claro'}</button><span class="pill is-static" title="Versão do aplicativo">VERSÃO ${APP_VERSION}</span>`;
     document.getElementById('toggle-tema').onclick = () => {
@@ -164,7 +165,7 @@ function render(view) {
   if (view === 'relatorios') return renderRelatorios(contextoId, api);
   if (view === 'importacao') return renderImportacao(contextoId, api);
   if (view === 'contextos') return renderContextos(contextoId, api, (novoId) => trocarContextoAtivo(novoId, api));
-  if (view === 'configuracoes') return renderConfiguracoes(contextoId, api);
+  if (view === 'configuracoes') return renderConfiguracoes(contextoId, api, appDbPath);
   return renderDashboard();
 }
 
