@@ -1,4 +1,12 @@
 
+## 0.8.5 — Auto-update com token do GitHub (escapa do rate limit 60/h)
+
+- **Problema**: o app chama `https://api.github.com/repos/mlopesdesign/mlopes-finance/releases/latest` **sem autenticação**. O GitHub limita chamadas anônimas a 60 req/h por IP. Depois das várias chamadas que fiz pra validar (build, install, smoke test, rate limit check), o IP do user estourou o limite. Resposta do GitHub pra chamadas anônimas após o estouro: **404** (sim, 404, não 403 — o GitHub "esconde" a diferença pra quem não tem auth). O `update.js` trata 404 como "repositório nao encontrado", mostrando a mensagem confusa no app.
+- **Fix**: `update.js` agora le **opcionalmente** um token do GitHub da env var `GH_TOKEN` ou `MLOPES_GH_TOKEN` (via `Neutralino.os.getEnv`) e adiciona como header `Authorization: Bearer <token>`. Com token, o limite vai pra 5000 req/h.
+- **Por que nao é hardcoded**: o token fica na env var, nao no source. Se o user nao setar a env var, o app volta a chamar anônimo (e bate no rate limit). Setar: `setx GH_TOKEN <token>` no PowerShell (permanente) ou `$env:GH_TOKEN = '<token>'` na sessao.
+- **Como descobrir o token atual do `gh`**: `gh auth token` retorna o token. O user ja tem o `gh` autenticado, entao o token existe.
+- **Bump 0.8.4 → 0.8.5** em 7 lugares. 34/34 testes verde, `node --check` em todos os arquivos alterados.
+
 ## 0.8.4 — HOTFIX: servidor.js usa APP_VERSION sem importar
 
 - **Bug critico na v0.8.3**: `src/js/backend/servidor.js` linha 96 usava `APP_VERSION` na rota `update:checar` mas **nunca importou** de `./ambiente.js`. Resultado: ao chamar a checagem de atualizacao (que acontece no boot, em `Configuracoes > Avancado > Verificar atualizacoes`, ou ao clicar na pill), o `servidor.js` quebrava com `ReferenceError: APP_VERSION is not defined` e o app ficava travado.

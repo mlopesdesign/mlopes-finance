@@ -56,10 +56,13 @@ export async function checarAtualizacao({ owner = DEFAULT_OWNER, repo = DEFAULT_
   try {
     const ctrl = new AbortController();
     const timeoutId = setTimeout(() => ctrl.abort(), 10000);
-    resp = await fetch(url, {
-      headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'MLopesFinance' },
-      signal: ctrl.signal,
-    });
+    // Token opcional do GitHub: le de GH_TOKEN (env var) ou MLOPES_GH_TOKEN. Com token, 5000 req/h. Sem, 60 req/h (rate limit estourou nas ultimas 24h).
+    let ghToken = '';
+    try { ghToken = (globalThis.Neutralino?.os?.getEnv && (await globalThis.Neutralino.os.getEnv('GH_TOKEN'))) || ''; } catch { /* sem permission */ }
+    if (!ghToken) try { ghToken = (globalThis.Neutralino?.os?.getEnv && (await globalThis.Neutralino.os.getEnv('MLOPES_GH_TOKEN'))) || ''; } catch { /* */ }
+    const headers = { 'Accept': 'application/vnd.github+json', 'User-Agent': 'MLopesFinance' };
+    if (ghToken) headers['Authorization'] = `Bearer ${ghToken}`;
+    resp = await fetch(url, { headers, signal: ctrl.signal });
     clearTimeout(timeoutId);
   } catch (e) {
     return { erro: 'Sem conexao: ' + e.message, temAtualizacao: false };
