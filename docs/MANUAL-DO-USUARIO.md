@@ -1,28 +1,30 @@
-﻿# Manual do Usuário — MLopes Finance v0.5.0
+﻿# Manual do Usuário — MLopes Finance v0.6.0
 
-Bem-vindo ao MLopes Finance, o sistema de gestão financeira pessoal e empresarial para Windows 10/11, local-first e auditável. Este manual cobre a versão 0.5.0.
+Bem-vindo ao **MLopes Finance**, o sistema de gestão financeira pessoal e empresarial para Windows 10/11, 100% local e auditável. Este manual cobre a versão **0.6.0**.
 
 ---
 
 ## 1. O que é o MLopes Finance
 
-O MLopes Finance é um aplicativo de gestão financeira que roda 100% local no seu computador. Seus dados ficam em `%APPDATA%\MLopesFinance\dados\mlopes-finance.sqlite` e nunca saem da sua máquina.
+O MLopes Finance é um aplicativo de gestão financeira que roda **100% local** no seu computador. Seus dados ficam em `%APPDATA%\MLopesFinance\dados\mlopes-finance.sqlite` e **nunca saem da sua máquina** — não tem servidor, não tem nuvem, não tem telemetria.
 
-**O que ele faz:**
+### O que ele faz (v0.6.0)
 
 - Lançamentos de receitas, despesas e transferências entre contas.
-- Cadastros editáveis de contas, clientes, fornecedores, projetos, centros de custo, tags e categorias.
-- Baixas parciais e totais com controle de saldo.
-- Recorrências (mensal, semanal, anual etc).
+- Cadastros editáveis: contas, clientes, fornecedores, projetos, centros de custo, tags e categorias.
+- Baixas parciais e totais com controle automático de saldo.
+- Recorrências (mensal, semanal, anual, etc.).
 - Cartões de crédito com faturas por ciclo.
+- **Importação de extratos OFX/CSV** com detecção automática de duplicidades.
+- **Backup e restauração** do banco via interface gráfica.
 - Tema claro/escuro e cor da marca customizáveis.
 - Configurações persistentes por instalação.
 
-**O que ele NÃO faz nesta versão (próximas sprints):**
+### O que ele **não** faz nesta versão
 
-- Conciliação bancária com extrato OFX/CSV.
+- Conciliação bancária automática (só manual).
 - Fluxo comercial completo (orçamento → aprovação → contrato → recebimentos).
-- Relatórios gerenciais com comparativos temporais.
+- Relatórios gerenciais com comparativos temporais (DRE, fluxo de caixa).
 - Integração fiscal NFS-e.
 - Sincronização na nuvem.
 
@@ -43,9 +45,9 @@ O MLopes Finance é um aplicativo de gestão financeira que roda 100% local no s
 
 ### 3.1 Contexto financeiro
 
-Um **contexto** é uma divisão lógica do seu dinheiro: "Pessoal", "ML Lopes Design", "Filial SP", "Projeto Apartamento", etc. Cada lançamento, conta, cliente ou projeto pertence a UM contexto. Isso impede misturar saldos de empresas ou pessoas diferentes.
+Um **contexto** é uma divisão lógica do seu dinheiro: "Pessoal", "ML Lopes Design", "Filial SP", "Projeto Apartamento", etc. Cada lançamento, conta, cliente ou projeto pertence a **um** contexto. Isso impede misturar saldos de empresas ou pessoas diferentes.
 
-A v0.5.0 vem com um contexto padrão "Meu contexto". Para criar mais, use a tela de configurações (Fase 3) ou o backend direto.
+A v0.6.0 vem com um contexto padrão "Meu contexto". Para criar mais, use a tela de configurações ou o backend direto.
 
 ### 3.2 Valor monetário
 
@@ -84,12 +86,13 @@ Para cada lançamento, o app calcula `valor_original - soma(baixas)`. A coluna "
 
 ## 4. Navegação
 
-A barra lateral esquerda tem 11 itens + Configurações no rodapé:
+A barra lateral esquerda tem **12 itens** + Configurações no rodapé:
 
 | Item | O que faz |
 |---|---|
 | **Visão geral** | Dashboard com 8 cards (Receitas, Despesas, Saldo, Contas, Clientes, Projetos, Centros de custo, Tags) + lembrete de "Próximo passo". |
 | **Lançamentos** | Lista paginada de lançamentos, com botão "Novo lançamento", "Transferir entre contas" e botão de saldo para abrir baixas. |
+| **Importar extrato** | Importar OFX/CSV do banco com prévia e detecção de duplicidades. |
 | **Transferências** | Lista de débitos+créditos vinculados entre contas. |
 | **Baixas e saldos** | Lista de lançamentos não-estornados com saldo em aberto e botão "Lançar baixa". |
 | **Contas** | Cadastro de contas (bancária, cartão, investimento). |
@@ -99,7 +102,7 @@ A barra lateral esquerda tem 11 itens + Configurações no rodapé:
 | **Centros de custo** | Cadastro de centros de custo. |
 | **Tags** | Cadastro de tags (vinculáveis a lançamentos). |
 | **Categorias** | Cadastro de categorias (receita, despesa ou ambas). |
-| **Configurações** | Aparência (tema, cor da marca), Identidade (nome, locale), Financeiro (moeda), Avançado (reset). |
+| **Configurações** | Aparência (tema, cor da marca), Identidade (nome, locale), Financeiro (moeda), Avançado (reset + backup). |
 
 ---
 
@@ -138,18 +141,37 @@ A barra lateral esquerda tem 11 itens + Configurações no rodapé:
 3. Valor (R$, default = saldo restante), Data, Forma (pix, boleto, dinheiro...), Observações.
 4. **Registrar baixa**. O saldo é atualizado. Se quitar o saldo, o status vira `conciliado`.
 
-### 5.6 Alternar tema (claro/escuro)
+### 5.6 Importar extrato bancário (OFX/CSV)
 
-1. **Pill** "☾ Escuro" (ou "☀ Claro") no topo da janela, ao lado de "VERSÃO 0.5.0".
+1. Sidebar → **Importar extrato**.
+2. Clique em **Selecionar arquivo** e escolha um `.ofx`, `.qfx` ou `.csv` do seu banco.
+3. Clique em **Pré-visualizar**. O app parseia, detecta duplicidades (mesma data + valor + descrição já existe?) e mostra uma tabela com cada transação e seu status:
+   - **Pendente**: vai virar lançamento quando você confirmar.
+   - **Duplicado**: já existe no banco, será ignorado.
+4. Escolha a **conta de destino** e a **natureza padrão** (quando ambíguo).
+5. Clique em **Confirmar importação** para criar os lançamentos. Ou **Cancelar importação** para descartar.
+
+**Formato CSV esperado** (auto-detecta separador e data):
+
+- Colunas: `data`, `valor`, `descricao` (case-insensitive, busca por nome).
+- Separadores: `,`, `;` ou TAB.
+- Datas: `YYYY-MM-DD`, `DD/MM/YYYY`, `DD-MM-YYYY` ou `YYYYMMDD`.
+- Valores: `150.50` ou `150,50` (negativos viram despesa, positivos viram receita).
+
+**Formato OFX esperado**: SGML (maioria dos bancos brasileiros) ou XML. Suporta tags `<TAG>valor` ou `TAG:valor`.
+
+### 5.7 Alternar tema (claro/escuro)
+
+1. **Pill** "☾ Escuro" (ou "☀ Claro") no topo da janela, ao lado de "VERSÃO 0.6.0".
 2. Clique. A página recarrega no outro tema. A escolha é salva no banco.
 
-### 5.7 Mudar a cor da marca
+### 5.8 Mudar a cor da marca
 
 1. Sidebar → **Configurações** → aba "Aparência".
 2. Clique no color picker "Cor da marca". A cor é aplicada em tempo real.
 3. **Salvar alterações** (botão no rodapé). Persistido.
 
-### 5.8 Configurar nome de exibição
+### 5.9 Configurar nome de exibição
 
 1. Sidebar → **Configurações** → aba "Identidade".
 2. Mude "Nome de exibição" (ex: "MLopes Finance - Pessoal"). Aparece no header.
@@ -157,68 +179,7 @@ A barra lateral esquerda tem 11 itens + Configurações no rodapé:
 
 ---
 
-## 6. Boas práticas
-
-- **Faça backup do banco** regularmente: copie `%APPDATA%\MLopesFinance\dados\mlopes-finance.sqlite` para um lugar seguro. A v0.5.0 ainda não tem botão de backup na UI (próxima sprint), mas o arquivo é um SQLite padrão, legível por qualquer cliente SQLite.
-- **Nunca edite o `.sqlite` com ferramentas externas enquanto o app está aberto**. Pode corromper.
-- **Concilie mensalmente**: use a tela de Lançamentos, filtre por mês, e marque os pagos.
-- **Use contextos separados para PJ e PF** para não misturar saldos.
-- **Não apague cadastros com histórico** — o app tem campo `ativo` para inativar sem perder.
-
----
-
-## 7. Problemas comuns
-
-| Sintoma | Causa provável | Solução |
-|---|---|---|
-| App abre mas fica na tela "Inicializando banco local..." | Cache do WebView2 corrompido | Feche o app, apague `%LOCALAPPDATA%\MLopes Design\` (cache do WebView2) e `%APPDATA%\com.mlopesdesign.mlopesfinance`, reabra. |
-| "Falha ao abrir o banco" | Banco corrompido | Copie o `.sqlite.old` (se existir) para `.sqlite` e reabra. Senão, delete o `.sqlite` (perde os dados) e reabra. |
-| Caracteres com acento errados | Encoding da página | Verifique se o `<meta charset="utf-8">` está presente no `index.html` (deve estar na linha 4). Se estiver, force recarregue com Ctrl+F5. |
-| Instalador não roda | SmartScreen bloqueando | Clique em "Mais informações" → "Executar mesmo assim". Assinatura digital virá em release futura. |
-| Botão de baixa não aparece | Lançamento já está estornado | Use a tela "Baixas e saldos" para ver todos os com saldo. |
-
----
-
-## 8. Onde os dados ficam
-
-| Item | Caminho |
-|---|---|
-| Banco SQLite | `%APPDATA%\MLopesFinance\dados\mlopes-finance.sqlite` |
-| Backup .old (última versão antes da atual) | mesmo dir, `mlopes-finance.sqlite.old` |
-| Temp de gravação (durante save) | mesmo dir, `mlopes-finance.sqlite.tmp` |
-| Cache do WebView2 | `%LOCALAPPDATA%\MLopes Design\` |
-| Logs (apenas dev) | mesmo dir, `app.log` |
-
-**Não apague o `.sqlite` sem backup.**
-
----
-
-## 9. Versão
-
-Este manual cobre a v0.5.0. Funcionalidades das próximas versões (conciliação, comercial, relatórios avançados) virão em releases futuros. Veja `HISTORICO-DE-VERSOES.md` no diretório do projeto.
-
-## 5. Importar extrato (OFX / CSV) — v0.6.0
-
-Acesse pelo menu lateral **Importar extrato**.
-
-1. Clique em **Selecionar arquivo** e escolha um `.ofx`, `.qfx` ou `.csv` do seu banco.
-2. Clique em **Pré-visualizar**. O app vai parsear o arquivo, detectar duplicidades (mesma data + valor + descrição já existe?) e mostrar uma tabela com cada transação e seu status:
-   - **Pendente**: vai virar lançamento quando você confirmar.
-   - **Duplicado**: já existe no banco, será ignorado.
-3. Escolha a **conta de destino** e a **natureza padrão** (quando ambíguo).
-4. Clique em **Confirmar importação** para criar os lançamentos. Ou **Cancelar importação** para descartar.
-
-O histórico fica disponível na parte de baixo da tela.
-
-**Formato CSV esperado** (auto-detecta separador e data):
-- Colunas: `data`, `valor`, `descricao` (case-insensitive, busca por nome também)
-- Separadores: `,`, `;` ou TAB
-- Datas: `YYYY-MM-DD`, `DD/MM/YYYY`, `DD-MM-YYYY` ou `YYYYMMDD`
-- Valores: `150.50` ou `150,50` (negativos viram despesa, positivos viram receita)
-
-**Formato OFX esperado**: SGML (maioria dos bancos brasileiros) ou XML. Suporta tags `<TAG>valor` ou `TAG:valor`.
-
-## 6. Backup e restauração (Fase 7)
+## 6. Backup e restauração
 
 Acesse **Configurações → Avançado**.
 
@@ -227,3 +188,49 @@ Acesse **Configurações → Avançado**.
 - **Verificar agora**: mostra a contagem de registros por tabela (radiografia).
 
 O backup é a forma mais segura de migrar entre máquinas, ou de ter um ponto de restauração antes de mudanças grandes.
+
+---
+
+## 7. Boas práticas
+
+- **Faça backup do banco** regularmente: use o botão "Exportar backup…" em Configurações → Avançado. Guarde os `.sqlite` em local seguro (HD externo, OneDrive pessoal, etc).
+- **Nunca edite o `.sqlite` com ferramentas externas enquanto o app está aberto**. Pode corromper.
+- **Concilie mensalmente**: use a tela de Lançamentos, filtre por mês, e marque os pagos.
+- **Use contextos separados para PJ e PF** para não misturar saldos.
+- **Não apague cadastros com histórico** — o app tem campo `ativo` para inativar sem perder.
+- **Importe extratos com cuidado**: sempre faça a prévia e confira o que está como "Duplicado" antes de confirmar.
+
+---
+
+## 8. Problemas comuns
+
+| Sintoma | Causa provável | Solução |
+|---|---|---|
+| App abre mas fica na tela "Inicializando banco local..." | Cache do WebView2 corrompido | Feche o app, apague `%LOCALAPPDATA%\MLopes Design\` (cache do WebView2) e reabra pelo atalho. |
+| "Falha ao abrir o banco" | Banco corrompido | Copie o `.sqlite.old` (se existir) para `.sqlite` e reabra. Senão, delete o `.sqlite` (perde os dados) e reabra. |
+| Caracteres com acento errados | Encoding da página | Verifique se o `<meta charset="utf-8">` está presente no `index.html`. Se estiver, force recarregue com Ctrl+F5. |
+| Instalador não roda | SmartScreen bloqueando | Clique em "Mais informações" → "Executar mesmo assim". Assinatura digital virá em release futura. |
+| Botão de baixa não aparece | Lançamento já está estornado | Use a tela "Baixas e saldos" para ver todos os com saldo. |
+| Importação OFX vazia | Arquivo com encoding diferente | Salve o OFX como UTF-8 antes de importar. |
+| Importação CSV rejeitada | Cabeçalho não detectado | Garanta que a primeira linha tem colunas `data`, `valor`, `descricao` (ou nomes equivalentes em qualquer caso). |
+
+---
+
+## 9. Onde os dados ficam
+
+| Item | Caminho |
+|---|---|
+| Banco SQLite | `%APPDATA%\MLopesFinance\dados\mlopes-finance.sqlite` |
+| Backup .old (última versão antes da atual) | mesmo dir, `mlopes-finance.sqlite.old` |
+| Temp de gravação (durante save) | mesmo dir, `mlopes-finance.sqlite.tmp` |
+| Cache do WebView2 | `%LOCALAPPDATA%\MLopes Design\` |
+| Logs (apenas dev) | mesmo dir, `app.log` |
+| Backups exportados | onde o user escolheu no "Exportar backup…" |
+
+**Não apague o `.sqlite` sem backup.**
+
+---
+
+## 10. Versão
+
+Este manual cobre a **v0.6.0**. Funcionalidades das próximas versões (conciliação automática, comercial, relatórios avançados, NFS-e) virão em releases futuros. Veja `HISTORICO-DE-VERSOES.md` no diretório do projeto.
