@@ -213,7 +213,7 @@ CREATE TABLE IF NOT EXISTS importacoes (
 CREATE TABLE IF NOT EXISTS itens_importacao (
   id INTEGER PRIMARY KEY,
   importacao_id INTEGER NOT NULL REFERENCES importacoes(id) ON DELETE CASCADE,
-  conta_id INTEGER NOT NULL REFERENCES contas(id),
+  conta_id INTEGER REFERENCES contas(id),
   data_transacao TEXT NOT NULL,
   valor_centavos INTEGER NOT NULL,
   descricao TEXT NOT NULL,

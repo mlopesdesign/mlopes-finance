@@ -1,5 +1,25 @@
 # Histórico de versões
 
+## 0.6.0 — Fase 5 (importação OFX/CSV) + Fase 7 (botão de backup)
+
+- **Fase 5 — Importação de extratos OFX/CSV** com fluxo "prévia → confirmar":
+  - **`src/js/backend/core/importacao.js`** (era 9027 bytes, agora ~11 KB): `parsearOFX` (suporta SGML e XML, tags `<TAG>valor` ou `TAG:valor`), `parsearCSV` (delimitador `,` `;` ou TAB, datas `yyyy-mm-dd` `dd/mm/yyyy` `dd-mm-yyyy` `yyyymmdd`, valores com `,` ou `.` decimal), `autoMapearCSV` (auto-detecta colunas data/valor/descrição por nome), `criarPreviaImportacao` (parseia, dedup contra hash do arquivo, marca itens duplicados contra lançamentos existentes por data+valor+descrição), `confirmarImportacao` (com BEGIN/COMMIT/ROLLBACK, cria lançamentos com `criarLancamento`), `listarImportacoes`, `cancelarImportacao`.
+  - **Schema v4** já existia: tabelas `importacoes` (id, contexto_id, arquivo_origem, formato OFX/CSV, hash_arquivo, total_registros, total_importados, status previa/confirmada/cancelada/erro, mapeamento_csv, criado_em) + `itens_importacao` (id, importacao_id, conta_id **NULLABLE** — setado só no confirmar, data_transacao, valor_centavos, descricao, chave_externa, status pendente/importado/ignorado/duplicado, lancamento_id, UNIQUE(importacao_id, chave_externa)) + 5 índices (idx_importacoes_contexto, idx_itens_importacao_status, idx_itens_importacao_chave, idx_anexos_lancamento, idx_conciliacoes_conta).
+  - **Bug do schema corrigido**: `itens_importacao.conta_id` agora é `INTEGER REFERENCES contas(id)` (nullable), antes era `NOT NULL` e quebrava porque o `conta_id` é definido no `confirmarImportacao`, não no `criarPreviaImportacao`.
+  - **Bug do parser OFX corrigido**: o regex original só aceitava `<TAG>valor`. OFX SGML (formato da maioria dos bancos brasileiros) usa `TAG:valor` sem `<>`. Agora aceita ambos via `pickTag()`.
+  - **Bug do parser CSV corrigido**: `if (!map.data)` falhava quando `data` estava na coluna 0 (porque `!0` é `true`). Trocado para `if (map.data < 0)`.
+  - **5 rotas novas no `servidor.js`**: `importacao:criarPrevia`, `importacao:confirmar`, `importacao:listar`, `importacao:cancelar`, `importacao:listarItens`.
+  - **`src/js/telas/importacao.js`** (UI nova): file picker (`.ofx`/`.qfx`/`.csv`/`.txt`), botão "Pré-visualizar", tabela com prévia (data/descrição/valor/status), select de conta destino, select de natureza padrão, botões "Confirmar importação" e "Cancelar", histórico de importações anteriores. Tudo dentro do padrão visual ml-* (`.panel`, `.field-row`, `.field-label`, `.pill`).
+  - **Item "Importar extrato" no sidebar** entre Lançamentos e Transferências.
+- **Fase 7 — Backup UI**:
+  - **Aba Avançado de Configurações** agora tem 3 botões novos:
+    - **"Exportar backup…"**: chama `backup:exportar` (retorna `Uint8Array`), abre `Neutralino.os.showSaveDialog` com filtro `.sqlite` e nome default `mlopes-finance-backup-YYYY-MM-DD.sqlite`, escreve com `writeBinaryFile`.
+    - **"Restaurar de arquivo…"**: abre `Neutralino.os.showOpenDialog`, lê o arquivo, pede confirmação, chama `backup:restaurar` (já existia, valida tabelas essenciais + contextos ≥ 1).
+    - **"Verificar agora" (radiografia)**: chama `backup:radiografar` e mostra contagens por tabela no `#cfg-backup-status`.
+- **5 testes novos** (era 14, agora 19 verde): `parsearOFX basico extrai transacoes com chave externa`, `parsearCSV com virgula e ponto-e-virgula`, `criarPreviaImportacao detecta duplicado contra mesmo arquivo`, `confirmarImportacao cria lancamentos e bloquear duplicata contra lancamentos existentes`, `cancelarImportacao marca pendentes como ignorados`.
+- **Verificação automatizada**: 19/19 testes verde, silent install OK, ProductVersion 0.6.0 confirmada no .exe instalado, item "Importar extrato" visível no sidebar, dashboard carrega com 8 cards zerados.
+- **Encoding UTF-8 sem BOM** mantido (regra permanente). Bump de versão: neutralino.config.json, package.json, src/js/app.js, src/js/backend/ambiente.js, installer/MLopesFinance.iss.
+
 ## 0.5.2 — hotfix de boot: import 'sql.js' sem caminho relativo + persistir simplificado
 
 - **Bug crítico do app travado em "Inicializando banco local..."** (v0.5.0/v0.5.1): o `src/js/backend/core/backup.js` tinha `import initSqlJs from 'sql.js'`, que funciona em Node mas **NÃO funciona no navegador/WebView2** (módulos ES exigem caminho relativo com `/`, `./` ou `../`). O WebView2 rejeitava o import silenciosamente, o módulo `app.js` não era avaliado, e a tela ficava travada no texto estático do `<div id="status">`.

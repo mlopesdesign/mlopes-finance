@@ -74,9 +74,22 @@ export function renderConfiguracoes(contextoId, api) {
           <div class="panel">
             <h2>Avançado</h2>
             <div class="field-row">
+              <div><div class="field-label">Exportar backup do banco</div><div class="field-help">Cria um arquivo .sqlite a partir do estado atual. Guarde em local seguro.</div></div>
+              <div><button class="button" id="cfg-exportar-backup">Exportar backup…</button></div>
+            </div>
+            <div class="field-row">
+              <div><div class="field-label">Restaurar de um backup</div><div class="field-help">Escolha um .sqlite exportado antes. O banco atual será substituído (com validação).</div></div>
+              <div><button class="button secondary" id="cfg-restaurar-backup">Restaurar de arquivo…</button></div>
+            </div>
+            <div class="field-row">
+              <div><div class="field-label">Radiografia do banco</div><div class="field-help">Contagem de registros por tabela essencial.</div></div>
+              <div><button class="button secondary" id="cfg-radiografar">Verificar agora</button></div>
+            </div>
+            <div class="field-row">
               <div><div class="field-label">Restaurar padrão</div><div class="field-help">Apaga todas as configurações e volta aos defaults.</div></div>
               <div><button class="button danger" id="cfg-reset">Restaurar padrão de fábrica</button></div>
             </div>
+            <div id="cfg-backup-status" class="field-help" style="margin-top: 12px;"></div>
           </div>
         </section>
 
@@ -120,6 +133,9 @@ export function renderConfiguracoes(contextoId, api) {
   document.getElementById('cfg-salvar').onclick = salvar;
   document.getElementById('cfg-cancelar').onclick = () => location.reload();
   document.getElementById('cfg-reset').onclick = resetar;
+  document.getElementById('cfg-exportar-backup').onclick = exportarBackup;
+  document.getElementById('cfg-restaurar-backup').onclick = restaurarBackup;
+  document.getElementById('cfg-radiografar').onclick = radiografar;
 }
 
 function popularForm() {
@@ -162,4 +178,74 @@ function resetar() {
   if (!confirm('Apagar todas as configurações e voltar aos defaults?')) return;
   _api('configuracoes:resetar');
   location.reload();
+}
+
+function setBackupStatus(msg, isError = false) {
+  const el = document.getElementById('cfg-backup-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = isError ? 'var(--danger)' : 'var(--muted)';
+}
+
+async function exportarBackup() {
+  setBackupStatus('Gerando backup…');
+  try {
+    const bytes = _api('backup:exportar');
+    if (!bytes || !(bytes instanceof Uint8Array)) throw new Error('Backup vazio ou inválido.');
+    const NL = globalThis.Neutralino;
+    if (!NL?.os?.showSaveDialog) throw new Error('Dialog de salvamento não disponível.');
+    const data = new Date().toISOString().slice(0, 10);
+    const caminho = await NL.os.showSaveDialog('Exportar backup do banco', {
+      defaultPath: `mlopes-finance-backup-${data}.sqlite`,
+      filters: [{ name: 'SQLite', extensions: ['sqlite'] }],
+    });
+    if (!caminho) {
+      setBackupStatus('Cancelado.');
+      return;
+    }
+    await NL.filesystem.writeBinaryFile(caminho, bytes);
+    setBackupStatus(`Backup exportado: ${caminho} (${formatBytes(bytes.length)})`);
+  } catch (e) {
+    setBackupStatus('Erro: ' + e.message, true);
+  }
+}
+
+async function restaurarBackup() {
+  setBackupStatus('Escolhendo arquivo…');
+  try {
+    const NL = globalThis.Neutralino;
+    if (!NL?.os?.showOpenDialog) throw new Error('Dialog de abertura não disponível.');
+    const [caminho] = await NL.os.showOpenDialog('Escolher arquivo de backup', {
+      filters: [{ name: 'SQLite', extensions: ['sqlite'] }],
+      multiSelections: false,
+    });
+    if (!caminho) {
+      setBackupStatus('Cancelado.');
+      return;
+    }
+    const bytes = await NL.filesystem.readBinaryFile(caminho);
+    if (!confirm(`Restaurar este backup? O banco atual será substituído. Continuar?`)) {
+      setBackupStatus('Cancelado.');
+      return;
+    }
+    const out = _api('backup:restaurar', { bytes });
+    setBackupStatus(`Backup restaurado. Registros: ${JSON.stringify(out.contagens)}`);
+  } catch (e) {
+    setBackupStatus('Erro: ' + e.message, true);
+  }
+}
+
+function radiografar() {
+  try {
+    const r = _api('backup:radiografar');
+    setBackupStatus('Contagens: ' + Object.entries(r).map(([t, n]) => `${t}=${n}`).join('  '));
+  } catch (e) {
+    setBackupStatus('Erro: ' + e.message, true);
+  }
+}
+
+function formatBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(2) + ' MB';
 }

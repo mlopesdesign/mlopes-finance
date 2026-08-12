@@ -9,36 +9,43 @@ function hashString(s) {
   return (h >>> 0).toString(16);
 }
 
-/** Parser OFX minimo (apenas extrato bancario simples, SGML-style). */
+/** Parser OFX minimo (extrato bancario simples, suporta SGML e XML). */
 export function parsearOFX(texto) {
   const transacoes = [];
-  // OFX usa tags SGML como <STMTTRN>...<TRNTYPE>...<DTPOSTED>...<TRNAMT>...<NAME>...<MEMO>...</STMTTRN>
+  // OFX SGML usa <STMTTRN>...<TRNTYPE>...<DTPOSTED>...<TRNAMT>...<NAME>...<MEMO>...</STMTTRN>
+  // OFX XML/2.x usa o mesmo formato. Tags SGML (sem < > nos valores) sao aceitas tambem.
   const blocos = texto.split(/<STMTTRN>/i).slice(1);
   for (const bloco of blocos) {
     const fim = bloco.search(/<\/STMTTRN>/i);
     const corpo = fim >= 0 ? bloco.substring(0, fim) : bloco;
-    const tipoMatch = corpo.match(/<TRNTYPE>([^<\r\n]+)/i);
-    const dataMatch = corpo.match(/<DTPOSTED>(\d{8})/i) || corpo.match(/<DTPOSTED>(\d{4})(\d{2})(\d{2})/i);
-    const valorMatch = corpo.match(/<TRNAMT>([-\d.,]+)/i);
-    const descMatch = corpo.match(/<NAME>([^<\r\n]+)/i) || corpo.match(/<MEMO>([^<\r\n]+)/i);
-    const fitidMatch = corpo.match(/<FITID>([^<\r\n]+)/i);
-    if (!dataMatch || !valorMatch) continue;
-    let dataISO;
-    if (dataMatch[1].length === 8) {
-      dataISO = `${dataMatch[1].substring(0, 4)}-${dataMatch[1].substring(4, 6)}-${dataMatch[1].substring(6, 8)}`;
-    } else {
-      dataISO = `${dataMatch[1]}-${dataMatch[2]}-${dataMatch[3]}`;
-    }
-    const valorStr = valorMatch[1].replace(',', '.');
-    const valorCentavos = Math.round(Math.abs(parseFloat(valorStr)) * 100);
-    const descricao = (descMatch?.[1] || 'Sem descricao').trim();
-    const fitid = fitidMatch?.[1]?.trim() || `${dataISO}|${valorCentavos}|${descricao}`;
+    // Acept tanto <TAG>valor quanto TAG:valor
+    const pickTag = (tag) => {
+      const m1 = corpo.match(new RegExp(`<${tag}>([^<\\r\\n]+)`, 'i'));
+      if (m1) return m1[1].trim();
+      const m2 = corpo.match(new RegExp(`^${tag}:(.+)$`, 'mi'));
+      if (m2) return m2[1].trim();
+      return null;
+    };
+    const tipo = pickTag('TRNTYPE');
+    const dataStr = pickTag('DTPOSTED');
+    const valorStr = pickTag('TRNAMT');
+    const descricao = pickTag('NAME') || pickTag('MEMO') || 'Sem descricao';
+    const fitid = pickTag('FITID');
+    if (!dataStr || !valorStr) continue;
+    // Data: aceita YYYYMMDD ou YYYYMMDDHHMMSS ou variantes
+    const dMatch = dataStr.match(/^(\d{4})(\d{2})(\d{2})/);
+    if (!dMatch) continue;
+    const dataISO = `${dMatch[1]}-${dMatch[2]}-${dMatch[3]}`;
+    const valor = Math.abs(parseFloat(valorStr.replace(',', '.')));
+    if (isNaN(valor)) continue;
+    const valorCentavos = Math.round(valor * 100);
+    const fitidFinal = fitid || `${dataISO}|${valorCentavos}|${descricao}`;
     transacoes.push({
       data_transacao: dataISO,
       valor_centavos: valorCentavos,
       descricao,
-      chave_externa: hashString(fitid),
-      tipo_ofx: tipoMatch?.[1]?.trim() || 'OUTROS',
+      chave_externa: hashString(fitidFinal),
+      tipo_ofx: tipo || 'OUTROS',
     });
   }
   return transacoes;
@@ -52,7 +59,7 @@ export function parsearCSV(texto, mapeamento = null) {
   const cabecalho = linhas[0].split(delim).map(c => c.trim().toLowerCase().replace(/^"|"$/g, ''));
   // Mapeamento default: tenta achar colunas por nome
   const map = mapeamento || autoMapearCSV(cabecalho);
-  if (!map.data || !map.valor || !map.descricao) throw new Error('CSV sem colunas de data, valor ou descricao. Informe o mapeamento manualmente.');
+  if (map.data < 0 || map.valor < 0 || map.descricao < 0) throw new Error('CSV sem colunas de data, valor ou descricao. Informe o mapeamento manualmente.');
   const transacoes = [];
   for (let i = 1; i < linhas.length; i++) {
     const campos = parsearLinhaCSV(linhas[i], delim);
@@ -134,7 +141,7 @@ export function criarPreviaImportacao(db, { contextoId, arquivoOrigem, formato, 
     [contextoId, arquivoOrigem, formato, hash, itens.length, mapeamentoCsv]);
   const idImport = Number(db.exec('SELECT last_insert_rowid() AS id')[0].values[0][0]);
   for (const it of itens) {
-    db.run(`INSERT INTO itens_importacao (importacao_id, conta_id, data_transacao, valor_centavos, descricao, chave_externa) VALUES (?, 0, ?, ?, ?, ?)`,
+    db.run(`INSERT INTO itens_importacao (importacao_id, conta_id, data_transacao, valor_centavos, descricao, chave_externa) VALUES (?, NULL, ?, ?, ?, ?)`,
       [idImport, it.data_transacao, it.valor_centavos, it.descricao, it.chave_externa]);
   }
   // Detecta duplicados contra lancamentos ja existentes (mesma data + valor + descricao)

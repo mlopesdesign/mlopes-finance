@@ -15,6 +15,7 @@ import { criarTransferencia, listarTransferencias } from '../src/js/backend/core
 import { registrarBaixa, saldoEmAberto, listarBaixas } from '../src/js/backend/core/baixas.js';
 import { criarRecorrencia, gerarProximaOcorrencia } from '../src/js/backend/core/recorrencias.js';
 import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas } from '../src/js/backend/core/cartoes.js';
+import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao } from '../src/js/backend/core/importacao.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const wasmPath = path.join(root, 'node_modules/sql.js/dist/sql-wasm.wasm');
@@ -258,4 +259,120 @@ test('migração v2 → head: aplica todas as migrações em banco v0.4.1 simula
   assert.equal(db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0].values[0][0], '4');
   // Dados anteriores preservados (configuracoes tema)
   assert.equal(db.exec("SELECT valor FROM configuracoes WHERE chave = 'tema'")[0].values[0][0], 'dark');
+});
+
+test('importacao: parsearOFX basico extrai transacoes com chave externa', async () => {
+  const ofx = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+SECURITY:NONE
+ENCODING:USASCII
+CHARSET:NO_SPECIAL_CHARS
+COMPRESSION:NONE
+OLDFILEUID:NONE
+NEWFILEUID:NONE
+<STMTTRN>
+TRNTYPE:DEBIT
+DTPOSTED:20260810120000
+TRNAMT:-150.50
+FITID:20260810001
+NAME:IFOOD
+MEMO:lanche
+</STMTTRN>
+<STMTTRN>
+TRNTYPE:CREDIT
+DTPOSTED:20260811120000
+TRNAMT:3500.00
+FITID:20260811002
+NAME:SALARIO
+</STMTTRN>`;
+  const txs = parsearOFX(ofx);
+  assert.equal(txs.length, 2);
+  assert.equal(txs[0].data_transacao, '2026-08-10');
+  assert.equal(txs[0].valor_centavos, 15050);
+  assert.equal(txs[0].descricao, 'IFOOD');
+  assert.ok(txs[0].chave_externa.length > 0);
+  assert.equal(txs[1].data_transacao, '2026-08-11');
+  assert.equal(txs[1].valor_centavos, 350000);
+  assert.equal(txs[1].descricao, 'SALARIO');
+  // Chaves devem ser diferentes
+  assert.notEqual(txs[0].chave_externa, txs[1].chave_externa);
+});
+
+test('importacao: parsearCSV com virgula e ponto-e-virgula', async () => {
+  // CSV virgula com valor decimal (sem virgula, senao nao cabe)
+  const csvVirgula = `data,valor,descricao\n2026-08-10,150.50,Compra A\n2026-08-11,89.90,Compra B`;
+  const txs1 = parsearCSV(csvVirgula);
+  assert.equal(txs1.length, 2);
+  assert.equal(txs1[0].valor_centavos, 15050);
+  assert.equal(txs1[0].descricao, 'Compra A');
+  assert.equal(txs1[1].valor_centavos, 8990);
+
+  // CSV com ponto-e-virgula (formato BR/PT) e data dd/mm/yyyy
+  const csvPontoVirgula = `data;valor;descricao\n10/08/2026;-200,00;Padaria\n11/08/2026;1500,00;Salario`;
+  const txs2 = parsearCSV(csvPontoVirgula);
+  assert.equal(txs2.length, 2);
+  assert.equal(txs2[0].data_transacao, '2026-08-10');
+  assert.equal(txs2[0].valor_centavos, 20000);
+  assert.equal(txs2[0].descricao, 'Padaria');
+  assert.equal(txs2[1].data_transacao, '2026-08-11');
+  assert.equal(txs2[1].valor_centavos, 150000);
+});
+
+test('importacao: criarPreviaImportacao detecta duplicado contra mesmo arquivo', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta', tipo: 'bancaria' });
+  const conteudo = `OFXHEADER:100\nDATA:OFXSGML\n<STMTTRN>\nTRNTYPE:DEBIT\nDTPOSTED:20260810\nTRNAMT:-100.00\nFITID:F1\nNAME:X\n</STMTTRN>`;
+  const id1 = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'a.ofx', formato: 'ofx', conteudo });
+  assert.ok(Number.isInteger(id1));
+  // Confirmar
+  const out1 = confirmarImportacao(db, { importacaoId: id1, contaId });
+  assert.equal(out1.importados, 1);
+  // Tentar recriar o mesmo arquivo deve dar erro
+  assert.throws(
+    () => criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'a.ofx', formato: 'ofx', conteudo }),
+    /ja foi importado/
+  );
+});
+
+test('importacao: confirmarImportacao cria lancamentos e bloquear duplicata contra lancamentos existentes', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'C1', tipo: 'bancaria' });
+  // Lancamento pre-existente
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 5000, dataCompetencia: '2026-08-10', descricao: 'Cafe' });
+  // Importar OFX com 1 item identico + 1 novo
+  const ofx = `<STMTTRN>\nTRNTYPE:DEBIT\nDTPOSTED:20260810\nTRNAMT:-50.00\nFITID:A1\nNAME:Cafe\n</STMTTRN>\n<STMTTRN>\nTRNTYPE:DEBIT\nDTPOSTED:20260811\nTRNAMT:-30.00\nFITID:A2\nNAME:Almoco\n</STMTTRN>`;
+  const id = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'x.ofx', formato: 'ofx', conteudo: ofx });
+  const itens = db.exec('SELECT id, status FROM itens_importacao WHERE importacao_id = ? ORDER BY id', [id])[0]?.values ?? [];
+  assert.equal(itens.length, 2);
+  // Item 1 (Cafe, ja existe) -> duplicado
+  assert.equal(itens[0][1], 'duplicado');
+  // Item 2 (Almoco, novo) -> pendente
+  assert.equal(itens[1][1], 'pendente');
+  // Confirmar: só 1 lancamento criado
+  const out = confirmarImportacao(db, { importacaoId: id, contaId });
+  assert.equal(out.importados, 1);
+  const total = db.exec('SELECT COUNT(*) FROM lancamentos WHERE contexto_id = ?', [cid])[0]?.values?.[0]?.[0];
+  assert.equal(total, 2); // 1 pre-existente + 1 importado
+  const status = db.exec("SELECT status FROM importacoes WHERE id = ?", [id])[0]?.values?.[0]?.[0];
+  assert.equal(status, 'confirmada');
+});
+
+test('importacao: cancelarImportacao marca pendentes como ignorados', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const ofx = `<STMTTRN>\nTRNTYPE:DEBIT\nDTPOSTED:20260810\nTRNAMT:-10.00\nFITID:C1\nNAME:X\n</STMTTRN>`;
+  const id = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'c.ofx', formato: 'ofx', conteudo: ofx });
+  assert.ok(id);
+  const r = cancelarImportacao(db, id);
+  assert.equal(r, true);
+  const itemStatus = db.exec("SELECT status FROM itens_importacao WHERE importacao_id = ?", [id])[0]?.values?.[0]?.[0];
+  assert.equal(itemStatus, 'ignorado');
+  const impStatus = db.exec("SELECT status FROM importacoes WHERE id = ?", [id])[0]?.values?.[0]?.[0];
+  assert.equal(impStatus, 'cancelada');
+  const lista = listarImportacoes(db, cid);
+  assert.equal(lista.length, 1);
+  assert.equal(lista[0][7], 'cancelada'); // coluna status
 });
