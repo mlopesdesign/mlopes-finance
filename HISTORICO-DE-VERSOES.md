@@ -1,4 +1,22 @@
 
+## 0.8.15 — CRUD completo de exclusão + Resetar banco
+
+- **Motivação do user**: "tenho que poder apagar o que eu quiser, ou quando cometer um erro, ficarei preso ao erro". Diagnóstico: o app só tinha funções de excluir para `importacao`, `baixas` e `configuracoes`. Não dava para apagar contextos, contas, categorias, clientes, fornecedores, projetos, centros de custo, tags, lançamentos, transferências, etc. O usuário cadastrava dados de teste e não tinha como limpar.
+- **Funções de excluir adicionadas no backend** (`core/*.js`):
+  - `excluirContexto`, `excluirConta`, `excluirCategoria` (financeiro.js)
+  - `excluirCliente`, `excluirFornecedor`, `excluirProjeto`, `excluirCentroCusto`, `excluirTag`, `desvincularTagLancamento` (cadastros.js)
+  - `excluirRecorrencia`, `desativarRecorrencia` (recorrencias.js — `excluir` sem cascade apenas desativa, preservando o histórico)
+  - `excluirTransferencia` (transferencias.js — desvincula os 2 lançamentos por padrão; `cascade:true` apaga tudo)
+  - `excluirLancamento`, `estornarLancamento`, `editarLancamento`, `listarLancamentos`, `obterLancamento` (lancamentos.js)
+  - `resetarBanco` (backup.js)
+- **Padrão de exclusão**: por padrão BLOQUEIA se há dependências (FK reversa). Lança erro com mensagem clara listando o que está vinculado. Flag `cascade:true` apaga em cascata, na ordem correta, dentro de transação `BEGIN/COMMIT`. Falha de qualquer passo → `ROLLBACK` automático.
+- **Regra do PADRAO/AGENTS preservada**: lançamentos CONCILIADOS não podem ser excluídos nem editados. Correções são por **estorno** (`estornarLancamento` cria lançamento INVERSO — receita↔despesa, mesmo valor — e marca o original como `'estornado'`). Funciona mesmo em lançamentos já conciliados (que é justamente o caso de uso).
+- **UI**: botões "Excluir" com confirmação em Contextos e Cadastros (clientes, fornecedores, projetos, centros de custo, tags). Botão "⚠ Resetar banco (apagar TUDO)" em Configurações > Avançado com **3 confirmações escalonadas** (incluindo digitar "RESET" em maiúsculas). Configurações são preservadas no reset.
+- **Bug fix encontrado durante o trabalho**: `criarLancamento` não persistia `cliente_id/projeto_id/centro_custo_id` (apesar de o schema ter essas colunas). Resultado: a FK nunca bloqueava exclusão de cliente/projeto/centro de custo (porque o dado nem era gravado). Corrigido. Validado pelos testes de FK (que agora falham sem persistência e passam com).
+- **Servidor**: 15 novas rotas (todas as `excluir`, mais `lancamentos:estornar/editar/obter`, mais `backup:resetar`, mais `recorrencias:desativar`, mais `lancamento_tags:desvincular`, mais `lancamentos:listar` com `incluirEstornados`).
+- **25 testes novos** (72/72 verde): excluir com FK, cascade, estornar (incluso de conciliado), editar bloqueia conciliado, listar exclui estornados, resetarBanco apaga tudo + recria "Pessoal" + idempotente, transferencia desvincula por padrão, etc.
+- **Bump v0.8.14 → v0.8.15** nos 7 lugares. Bundle v0.8.15 (5.69 MB, SHA `6E63CFBC…02`) instalado na máquina do Marcio, backup v0.8.14 preservado.
+
 ## 0.8.14 — Invalida cache do WebView2 antes do restartProcess (fix loop auto-update)
 
 - **Sintoma (loop de "tem atualização")**: app instalado em v0.8.12 (ou v0.8.13 anterior) detectava v0.8.14, baixava, aplicava, `restartProcess` rodava, app reabria, pill de atualização **continuava** oferecendo v0.8.14. Loop eterno. Print do user às 03:00: "ele instala e volta, mas continua dizendo que tem atualizaço".

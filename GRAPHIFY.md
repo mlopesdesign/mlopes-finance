@@ -1,6 +1,6 @@
 # GRAPHIFY — Mapa técnico do MLopes Finance
 
-> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-13T12:01:29.230Z.
+> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-13T13:40:24.128Z.
 > Não editar manualmente. Fonte da verdade: `src/` e `tools/`.
 
 ## Resumo
@@ -22,7 +22,7 @@ Total: 29 módulos.
 
 MLopes Finance — backup, exportacao e restauracao
 
-**Exports:** `criarBackup`, `exportarSQLite`, `radiografar`, `validarBanco`, `restaurarBackup`, `validarCiclo`
+**Exports:** `criarBackup`, `exportarSQLite`, `radiografar`, `validarBanco`, `restaurarBackup`, `validarCiclo`, `resetarBanco`
 
 ### `src/js/backend/core/baixas.js`
 
@@ -36,7 +36,7 @@ MLopes Finance — baixas (pagamentos) de lancamentos
 
 MLopes Finance — cadastros editaveis (clientes, fornecedores, projetos, centros_custo, tags)
 
-**Exports:** `criarCliente`, `listarClientes`, `atualizarCliente`, `criarFornecedor`, `listarFornecedores`, `atualizarFornecedor`, `criarProjeto`, `listarProjetos`, `atualizarProjeto`, `criarCentroCusto`, `listarCentrosCusto`, `criarTag`, `listarTags`, `vincularTagLancamento`, `listarTagsDoLancamento`
+**Exports:** `criarCliente`, `listarClientes`, `atualizarCliente`, `criarFornecedor`, `listarFornecedores`, `atualizarFornecedor`, `criarProjeto`, `listarProjetos`, `atualizarProjeto`, `criarCentroCusto`, `listarCentrosCusto`, `criarTag`, `listarTags`, `vincularTagLancamento`, `listarTagsDoLancamento`, `excluirCliente`, `excluirFornecedor`, `excluirProjeto`, `excluirCentroCusto`, `excluirTag`, `desvincularTagLancamento`
 
 ### `src/js/backend/core/cartoes.js`
 
@@ -54,7 +54,7 @@ MLopes Finance — backend de configurações
 
 * Retorna saldos agregados do contexto: total receitas, despesas, contas, clientes, etc.
 
-**Exports:** `validarValorCentavos`, `validarData`, `criarContexto`, `listarContextos`, `obterContexto`, `atualizarContexto`, `alternarContextoAtivo`, `resumoContexto`, `criarConta`, `atualizarConta`, `criarCategoria`, `atualizarCategoria`
+**Exports:** `validarValorCentavos`, `validarData`, `criarContexto`, `listarContextos`, `obterContexto`, `atualizarContexto`, `alternarContextoAtivo`, `resumoContexto`, `criarConta`, `atualizarConta`, `criarCategoria`, `atualizarCategoria`, `excluirContexto`, `excluirConta`, `excluirCategoria`
 
 ### `src/js/backend/core/importacao.js`
 
@@ -66,7 +66,9 @@ MLopes Finance — importacao de extratos OFX e CSV
 
 ### `src/js/backend/core/lancamentos.js`
 
-**Exports:** `criarLancamento`, `conciliarLancamento`, `resumo`
+=== EXCLUSAO / ESTORNO ===
+
+**Exports:** `criarLancamento`, `conciliarLancamento`, `resumo`, `excluirLancamento`, `estornarLancamento`, `editarLancamento`, `listarLancamentos`, `obterLancamento`
 
 **Imports:** validarData, validarValorCentavos ← `./financeiro.js`
 
@@ -74,7 +76,7 @@ MLopes Finance — importacao de extratos OFX e CSV
 
 MLopes Finance — recorrencias
 
-**Exports:** `criarRecorrencia`, `gerarProximaOcorrencia`, `listarRecorrencias`
+**Exports:** `criarRecorrencia`, `gerarProximaOcorrencia`, `listarRecorrencias`, `desativarRecorrencia`, `excluirRecorrencia`
 
 **Imports:** criarLancamento ← `./lancamentos.js`
 
@@ -90,7 +92,7 @@ MLopes Finance — Relatorios e balancete (Fase 6)
 
 MLopes Finance — transferencias entre contas do mesmo contexto
 
-**Exports:** `criarTransferencia`, `listarTransferencias`
+**Exports:** `criarTransferencia`, `listarTransferencias`, `excluirTransferencia`
 
 **Imports:** validarData, validarValorCentavos ← `./financeiro.js`; criarLancamento ← `./lancamentos.js`
 
@@ -120,7 +122,7 @@ MLopes Finance — atualizacao online (parte PURA: sem DOM, sem Neutralino, sem 
 
 **Exports:** `criarApi`
 
-**Imports:** criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto, atualizarConta, atualizarCategoria ← `./core/financeiro.js`; conciliarLancamento, criarLancamento, resumo ← `./core/lancamentos.js`; getAllConfig, getConfig, setConfig, deleteConfig, resetConfig ← `./core/configuracoes.js`; criarBackup, radiografar, restaurarBackup, validarCiclo ← `./core/backup.js`; criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento ← `./core/cadastros.js`; criarTransferencia, listarTransferencias ← `./core/transferencias.js`; registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa ← `./core/baixas.js`; criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias ← `./core/recorrencias.js`; criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura ← `./core/cartoes.js`; criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao ← `./core/importacao.js`; balancete, comparativo, exportaCSV ← `./core/relatorios.js`; compararVersao ← `./core/update.js`; checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, listarReleases, pathTempInstalador ← `./update.js`; APP_VERSION ← `./ambiente.js`
+**Imports:** criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto, atualizarConta, atualizarCategoria, excluirContexto, excluirConta, excluirCategoria ← `./core/financeiro.js`; conciliarLancamento, criarLancamento, resumo, excluirLancamento, estornarLancamento, editarLancamento, listarLancamentos, obterLancamento ← `./core/lancamentos.js`; getAllConfig, getConfig, setConfig, deleteConfig, resetConfig ← `./core/configuracoes.js`; criarBackup, radiografar, restaurarBackup, validarCiclo, resetarBanco ← `./core/backup.js`; criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento, excluirCliente, excluirFornecedor, excluirProjeto, excluirCentroCusto, excluirTag, desvincularTagLancamento ← `./core/cadastros.js`; criarTransferencia, listarTransferencias, excluirTransferencia ← `./core/transferencias.js`; registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa ← `./core/baixas.js`; criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias, excluirRecorrencia, desativarRecorrencia ← `./core/recorrencias.js`; criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura ← `./core/cartoes.js`; criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao ← `./core/importacao.js`; balancete, comparativo, exportaCSV ← `./core/relatorios.js`; compararVersao ← `./core/update.js`; checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, listarReleases, pathTempInstalador ← `./update.js`; APP_VERSION ← `./ambiente.js`
 
 ### `src/js/backend/update.js`
 
@@ -144,7 +146,7 @@ MLopes Finance — Tela de Configurações
 
 **Exports:** `renderConfiguracoes`
 
-**API calls:** `configuracoes:listar`, `configuracoes:salvar`, `configuracoes:resetar`, `backup:exportar`, `backup:restaurar`, `backup:radiografar`
+**API calls:** `configuracoes:listar`, `configuracoes:salvar`, `configuracoes:resetar`, `backup:exportar`, `backup:restaurar`, `backup:radiografar`, `backup:resetar`
 
 ### `src/js/telas/contextos.js`
 
@@ -152,7 +154,7 @@ MLopes Finance — Tela de Contextos Financeiros (CRUD)
 
 **Exports:** `renderContextos`
 
-**API calls:** `contextos:listar`, `contextos:resumo`, `contextos:alternarAtivo`, `contextos:obter`, `contextos:atualizar`, `contextos:criar`
+**API calls:** `contextos:listar`, `contextos:resumo`, `contextos:alternarAtivo`, `contextos:excluir`, `contextos:obter`, `contextos:atualizar`, `contextos:criar`
 
 ### `src/js/telas/importacao.js`
 
