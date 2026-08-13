@@ -219,3 +219,54 @@ export function excluirImportacao(db, importacaoId) {
   return { ok: true, id: importacaoId, statusAnterior: r[1] };
 }
 
+/**
+ * Exclui os lancamentos vinculados a uma importacao (via itens_importacao.lancamento_id).
+ * Regra de auditoria do PADRAO/AGENTS: NAO apagar lancamento conciliado.
+ * - Bloqueia a exclusao inteira se ALGUM dos lancamentos estiver conciliado.
+ * - Tambem exclui as baixas vinculadas (cascade via baixas.lancamento_id).
+ * Retorna { ok, excluidos, bloqueadoPor }.
+ */
+export function excluirLancamentosImportacao(db, importacaoId) {
+  if (!Number.isInteger(importacaoId)) throw new Error('importacaoId obrigatorio.');
+  // Confere que a importacao existe
+  const imp = db.exec('SELECT id FROM importacoes WHERE id = ?', [importacaoId])[0]?.values?.[0];
+  if (!imp) throw new Error('Importacao nao encontrada.');
+  // Busca os lancamentos vinculados via itens_importacao
+  const vincs = db.exec(
+    'SELECT DISTINCT l.id, l.status FROM itens_importacao ii JOIN lancamentos l ON l.id = ii.lancamento_id WHERE ii.importacao_id = ? AND ii.lancamento_id IS NOT NULL',
+    [importacaoId]
+  )[0]?.values ?? [];
+  if (!vincs.length) {
+    return { ok: true, excluidos: 0, bloqueadoPor: null, mensagem: 'Nenhum lancamento vinculado a esta importacao.' };
+  }
+  // Bloqueia se algum estiver conciliado
+  const conciliados = vincs.filter((v) => v[1] === 'conciliado');
+  if (conciliados.length > 0) {
+    return {
+      ok: false,
+      excluidos: 0,
+      bloqueadoPor: 'conciliado',
+      mensagem: `${conciliados.length} lancamento(s) ja estao conciliados. Cancele/estorne via Conciliacao antes de excluir.`,
+      conciliados: conciliados.map((v) => v[0]),
+    };
+  }
+  // Exclui baixas vinculadas (cascade) + lancamentos
+  db.run('BEGIN');
+  try {
+    // 1. Limpa a referencia nos itens_importacao ANTES (FK sem CASCADE)
+    db.run('UPDATE itens_importacao SET lancamento_id = NULL, status = ? WHERE importacao_id = ?', ['ignorado', importacaoId]);
+    // 2. Exclui baixas vinculadas + lancamentos
+    for (const [id] of vincs) {
+      db.run('DELETE FROM baixas WHERE lancamento_id = ?', [id]);
+      db.run('DELETE FROM lancamentos WHERE id = ?', [id]);
+    }
+    // 3. Marca a importacao como cancelada
+    db.run("UPDATE importacoes SET status = 'cancelada' WHERE id = ?", [importacaoId]);
+    db.run('COMMIT');
+  } catch (e) {
+    db.run('ROLLBACK');
+    throw e;
+  }
+  return { ok: true, excluidos: vincs.length, bloqueadoPor: null, mensagem: `${vincs.length} lancamento(s) excluido(s). Importacao marcada como cancelada.` };
+}
+

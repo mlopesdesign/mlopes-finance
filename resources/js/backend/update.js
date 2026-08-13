@@ -18,18 +18,33 @@ const REPO_OWNER = 'mlopesdesign';
 const REPO_NAME = 'mlopes-finance';
 const ASSET_NAME = 'resources.neu';
 const API_BASE = 'https://api.github.com';
-const APP_DIR = '%LOCALAPPDATA%\\Programs\\MLopes Finance';
-const RESOURCE_PATH = `${APP_DIR}\\resources.neu`;
-const TEMP_PATH = `${APP_DIR}\\resources.neu.tmp`;
 
-// Caminho temporario onde o .neu eh baixado antes de substituir o oficial.
-export function pathTempInstalador() {
-  return TEMP_PATH;
+// Paths sao resolvidos em runtime via Neutralino.os.getEnv('LOCALAPPDATA'),
+// porque o `os.execCommand` do Neutralino NAO expande %LOCALAPPDATA% em cmd.exe
+// (resultado: literal "%LOCALAPPDATA%" no comando, falha do curl.exe).
+let _appDirCache = null;
+async function getAppDir() {
+  if (_appDirCache) return _appDirCache;
+  if (!globalThis.Neutralino) throw new Error('Neutralino nao disponivel');
+  const localAppData = await Neutralino.os.getEnv('LOCALAPPDATA');
+  if (!localAppData) throw new Error('Variavel LOCALAPPDATA nao disponivel no ambiente.');
+  _appDirCache = `${localAppData}\\Programs\\MLopes Finance`;
+  return _appDirCache;
+}
+async function pathTempInstaladorAsync() {
+  return `${await getAppDir()}\\resources.neu.tmp`;
+}
+async function pathRecursoInstaladoAsync() {
+  return `${await getAppDir()}\\resources.neu`;
 }
 
-// Caminho final do bundle instalado (usado por aplicarAtualizacao).
+// Wrappers sincronos (pathTempInstalador/pathRecursoInstalado) para o caso
+// de testes/ambientes sem Neutralino. Em producao, use as versoes async.
+export function pathTempInstalador() {
+  return _appDirCache ? `${_appDirCache}\\resources.neu.tmp` : '%LOCALAPPDATA%\\Programs\\MLopes Finance\\resources.neu.tmp';
+}
 export function pathRecursoInstalado() {
-  return RESOURCE_PATH;
+  return _appDirCache ? `${_appDirCache}\\resources.neu` : '%LOCALAPPDATA%\\Programs\\MLopes Finance\\resources.neu';
 }
 
 // GET via curl.exe (secao 5.2 do PADRAO). Retorna o body como string.
@@ -126,29 +141,32 @@ export async function listarReleases({ owner = REPO_OWNER, repo = REPO_NAME, lim
 }
 
 // Baixa o asset do GitHub para o path temporario. Retorna { caminho, size }.
-export async function baixarAtualizacao(assetUrl, destino = pathTempInstalador()) {
+export async function baixarAtualizacao(assetUrl, destino = null) {
   if (!assetUrl) throw new Error('assetUrl obrigatorio');
-  return await curlDownload(assetUrl, destino);
+  const dest = destino || await pathTempInstaladorAsync();
+  return await curlDownload(assetUrl, dest);
 }
 
 // Substitui o resources.neu instalado pelo novo e reinicia o processo.
 // ATENCAO: o backup do banco deve ser feito ANTES de chamar esta funcao
 // (a rota `update:aplicar` em servidor.js cuida disso, usando criarBackup).
-export async function aplicarAtualizacao(caminho = pathTempInstalador()) {
+export async function aplicarAtualizacao(caminho = null) {
   if (!globalThis.Neutralino) throw new Error('Neutralino nao disponivel');
+  const caminhoFinal = caminho || await pathTempInstaladorAsync();
+  const recursoFinal = await pathRecursoInstaladoAsync();
   // Verifica que o arquivo existe e tem tamanho razoavel (> 1 KB).
   let stat;
   try {
-    stat = await Neutralino.filesystem.getStats(caminho);
+    stat = await Neutralino.filesystem.getStats(caminhoFinal);
   } catch {
-    throw new Error(`Arquivo baixado nao encontrado: ${caminho}`);
+    throw new Error(`Arquivo baixado nao encontrado: ${caminhoFinal}`);
   }
   if (!stat || stat.size < 1024) {
-    throw new Error(`Arquivo baixado invalido (${stat?.size || 0} bytes): ${caminho}`);
+    throw new Error(`Arquivo baixado invalido (${stat?.size || 0} bytes): ${caminhoFinal}`);
   }
   // Substitui o resources.neu oficial via move /Y (sobrescreve destino).
   // cmd.exe /c "move /Y" e' a forma portavel no Windows. -Y suprime prompt.
-  const moveCmd = `cmd.exe /c move /Y "${caminho}" "${RESOURCE_PATH}"`;
+  const moveCmd = `cmd.exe /c move /Y "${caminhoFinal}" "${recursoFinal}"`;
   const mv = await Neutralino.os.execCommand(moveCmd, { background: false });
   if (mv.exitCode !== 0) {
     throw new Error(`move /Y falhou (exit ${mv.exitCode}): ${(mv.stdErr || '').trim()}`);
@@ -158,7 +176,7 @@ export async function aplicarAtualizacao(caminho = pathTempInstalador()) {
     await Neutralino.app.restartProcess();
   } catch (e) {
     // Se nao conseguir reiniciar, devolve caminho novo mesmo assim
-    return { ok: true, caminho: RESOURCE_PATH, reiniciado: false, erro: e.message };
+    return { ok: true, caminho: recursoFinal, reiniciado: false, erro: e.message };
   }
-  return { ok: true, caminho: RESOURCE_PATH, reiniciado: true };
+  return { ok: true, caminho: recursoFinal, reiniciado: true };
 }

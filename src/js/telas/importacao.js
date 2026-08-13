@@ -288,6 +288,7 @@ function renderHistorico() {
   // Colunas: id, contexto_id, arquivo_origem, formato, hash_arquivo, total_registros, total_importados, status, mapeamento_csv, criado_em
   div.innerHTML = `<table><thead><tr><th>#</th><th>Arquivo</th><th>Formato</th><th>Itens</th><th>Importados</th><th>Status</th><th>Data</th><th></th></tr></thead><tbody>${rows.map(r => {
     const statusClass = r[7] === 'confirmada' ? 'pill' : r[7] === 'cancelada' ? 'pill is-static' : 'pill warn';
+    const importacoes = r[6] > 0;
     return `<tr>
       <td>${r[0]}</td>
       <td>${escapeHtml(String(r[2] || ''))}</td>
@@ -296,7 +297,10 @@ function renderHistorico() {
       <td>${r[6]}</td>
       <td><span class="${statusClass}">${r[7]}</span></td>
       <td>${String(r[9] || '').replace('T', ' ').substring(0, 19)}</td>
-      <td><button class="button ghost small" data-excluir="${r[0]}" title="Excluir esta importação (lançamentos já criados permanecem)">Excluir</button></td>
+      <td>
+        ${importacoes ? `<button class="button ghost small danger" data-excluir-lanc="${r[0]}" title="Excluir os ${r[6]} lançamentos desta importação (bloqueia se algum estiver conciliado)">Excluir ${r[6]} lanç.</button> ` : ''}
+        <button class="button ghost small" data-excluir="${r[0]}" title="Excluir esta importação (lançamentos permanecem)">Excluir</button>
+      </td>
     </tr>`;
   }).join('')}</tbody></table>`;
   // Listeners
@@ -305,11 +309,28 @@ function renderHistorico() {
       const id = Number(btn.dataset.excluir);
       if (!confirm(`Excluir a importação #${id}? Os itens pendentes/duplicados somem. Lançamentos já criados permanecem intactos.`)) return;
       try {
-        const out = _api('importacao:excluir', { importacaoId: id });
+        _api('importacao:excluir', { importacaoId: id });
         if (globalThis.toastOk) toastOk(`Importação #${id} excluída.`);
         renderHistorico();
       } catch (e) {
         if (globalThis.toastErr) toastErr('Erro ao excluir: ' + e.message);
+      }
+    };
+  });
+  div.querySelectorAll('button[data-excluir-lanc]').forEach(btn => {
+    btn.onclick = () => {
+      const id = Number(btn.dataset.excluirLanc);
+      if (!confirm(`Excluir TODOS os lançamentos desta importação #${id}? As baixas vinculadas também. A importação será marcada como cancelada. ATENÇÃO: bloqueia se algum lançamento estiver conciliado (regra de auditoria).`)) return;
+      try {
+        const out = _api('importacao:excluirLancamentos', { importacaoId: id });
+        if (out.ok) {
+          if (globalThis.toastOk) toastOk(out.mensagem || `${out.excluidos} lançamentos excluídos.`);
+        } else {
+          if (globalThis.toastErr) toastErr(out.mensagem || 'Bloqueado.', 8000);
+        }
+        renderHistorico();
+      } catch (e) {
+        if (globalThis.toastErr) toastErr('Erro: ' + e.message);
       }
     };
   });

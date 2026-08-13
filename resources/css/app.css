@@ -141,6 +141,9 @@ h2 { margin-top: 0; font-size: 20px; color: var(--ink); }
 .button.ghost:hover { background: var(--surface-2); color: var(--ink); }
 .button.ghost.small { padding: 4px 10px; font-size: 12px; }
 .button.danger { background: var(--negativo); color: #fff; }
+.button.danger:hover { background: #8a1c12; }
+.button.ghost.danger { background: transparent; color: var(--negativo); border: 1px solid var(--negativo); }
+.button.ghost.danger:hover { background: rgba(180, 35, 24, 0.08); color: var(--negativo); }
 
 /* ===== TABLES ===== */
 table { width: 100%; border-collapse: collapse; }

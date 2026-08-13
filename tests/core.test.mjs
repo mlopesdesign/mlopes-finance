@@ -15,7 +15,7 @@ import { criarTransferencia, listarTransferencias } from '../src/js/backend/core
 import { registrarBaixa, saldoEmAberto, listarBaixas } from '../src/js/backend/core/baixas.js';
 import { criarRecorrencia, gerarProximaOcorrencia } from '../src/js/backend/core/recorrencias.js';
 import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas } from '../src/js/backend/core/cartoes.js';
-import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao } from '../src/js/backend/core/importacao.js';
+import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao } from '../src/js/backend/core/importacao.js';
 import { balancete, comparativo, exportaCSV, calcularPeriodo } from '../src/js/backend/core/relatorios.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -456,6 +456,66 @@ test('importacao: CSV com sinal cria lancamentos com natureza correta (despesa/r
   assert.equal(lancs[1][2], 150000);
   assert.equal(lancs[3][1], 'receita');
   assert.equal(lancs[3][2], 500000);
+});
+
+test('importacao: excluirLancamentosImportacao remove todos os lancamentos nao conciliados', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'X', tipo: 'bancaria' });
+  const ofx = `<STMTTRN>\nTRNTYPE:DEBIT\nDTPOSTED:20260810\nTRNAMT:-100.00\nFITID:X1\nNAME:L1\n</STMTTRN>\n<STMTTRN>\nTRNTYPE:CREDIT\nDTPOSTED:20260811\nTRNAMT:50.00\nFITID:X2\nNAME:L2\n</STMTTRN>`;
+  const id = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'x.ofx', formato: 'ofx', conteudo: ofx });
+  const out = confirmarImportacao(db, { importacaoId: id, contaId });
+  assert.equal(out.importados, 2);
+  // Antes: 2 lancamentos
+  assert.equal(db.exec('SELECT COUNT(*) FROM lancamentos WHERE contexto_id = ?', [cid])[0]?.values?.[0]?.[0], 2);
+  // Excluir
+  const r = excluirLancamentosImportacao(db, id);
+  assert.equal(r.ok, true);
+  assert.equal(r.excluidos, 2);
+  assert.equal(r.bloqueadoPor, null);
+  // Lancamentos removidos
+  assert.equal(db.exec('SELECT COUNT(*) FROM lancamentos WHERE contexto_id = ?', [cid])[0]?.values?.[0]?.[0], 0);
+  // Importacao marcada como cancelada
+  const impStatus = db.exec("SELECT status FROM importacoes WHERE id = ?", [id])[0]?.values?.[0]?.[0];
+  assert.equal(impStatus, 'cancelada');
+  // Itens: lancamento_id = NULL, status = 'ignorado'
+  const itens = db.exec('SELECT status, lancamento_id FROM itens_importacao WHERE importacao_id = ?', [id])[0]?.values ?? [];
+  for (const it of itens) {
+    assert.equal(it[0], 'ignorado');
+    assert.equal(it[1], null);
+  }
+});
+
+test('importacao: excluirLancamentosImportacao BLOQUEIA se algum lancamento estiver conciliado', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'X', tipo: 'bancaria' });
+  const ofx = `<STMTTRN>\nTRNTYPE:DEBIT\nDTPOSTED:20260810\nTRNAMT:-100.00\nFITID:Y1\nNAME:L1\n</STMTTRN>\n<STMTTRN>\nTRNTYPE:DEBIT\nDTPOSTED:20260811\nTRNAMT:-50.00\nFITID:Y2\nNAME:L2\n</STMTTRN>`;
+  const id = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'y.ofx', formato: 'ofx', conteudo: ofx });
+  confirmarImportacao(db, { importacaoId: id, contaId });
+  // Conciliar o primeiro lancamento
+  const lancs = db.exec('SELECT id FROM lancamentos WHERE contexto_id = ?', [cid])[0]?.values ?? [];
+  conciliarLancamento(db, lancs[0][0]);
+  // Tentar excluir
+  const r = excluirLancamentosImportacao(db, id);
+  assert.equal(r.ok, false);
+  assert.equal(r.bloqueadoPor, 'conciliado');
+  assert.equal(r.excluidos, 0);
+  assert.ok(r.mensagem.includes('conciliad'));
+  // Lancamentos permanecem
+  assert.equal(db.exec('SELECT COUNT(*) FROM lancamentos WHERE contexto_id = ?', [cid])[0]?.values?.[0]?.[0], 2);
+});
+
+test('importacao: excluirLancamentosImportacao em importacao sem lancamentos vinculados', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const ofx = `<STMTTRN>\nTRNTYPE:DEBIT\nDTPOSTED:20260810\nTRNAMT:-100.00\nFITID:Z1\nNAME:L1\n</STMTTRN>`;
+  const id = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'z.ofx', formato: 'ofx', conteudo: ofx });
+  // Sem confirmar (nenhum lancamento criado)
+  const r = excluirLancamentosImportacao(db, id);
+  assert.equal(r.ok, true);
+  assert.equal(r.excluidos, 0);
+  assert.match(r.mensagem, /Nenhum lancamento/);
 });
 
 test('relatorios: balancete basico agrupa por categoria e soma certo', async () => {
