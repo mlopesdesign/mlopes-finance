@@ -75,9 +75,39 @@ export function criarConta(db, { contextoId, nome, tipo = 'bancaria', saldoInici
   return db.exec('SELECT last_insert_rowid() AS id')[0].values[0][0];
 }
 
+export function atualizarConta(db, { id, nome, tipo, saldoInicialCentavos }) {
+  if (!Number.isInteger(id)) throw new Error('ID da conta é obrigatório.');
+  if (nome != null) {
+    if (!String(nome).trim()) throw new Error('Nome da conta é obrigatório.');
+    db.run('UPDATE contas SET nome = ? WHERE id = ?', [String(nome).trim(), id]);
+  }
+  if (tipo != null) {
+    if (!['bancaria', 'cartao', 'investimento'].includes(tipo)) throw new Error('Tipo de conta inválido.');
+    db.run('UPDATE contas SET tipo = ? WHERE id = ?', [tipo, id]);
+  }
+  if (saldoInicialCentavos != null) {
+    if (!Number.isSafeInteger(saldoInicialCentavos)) throw new Error('Saldo inicial deve estar em centavos.');
+    db.run('UPDATE contas SET saldo_inicial_centavos = ? WHERE id = ?', [saldoInicialCentavos, id]);
+  }
+  return true;
+}
+
 export function criarCategoria(db, { contextoId, nome, natureza = 'ambas' }) {
   if (!Number.isInteger(contextoId) || !nome?.trim()) throw new Error('Contexto e nome da categoria são obrigatórios.');
   if (!['receita', 'despesa', 'ambas'].includes(natureza)) throw new Error('Natureza inválida.');
   db.run('INSERT INTO categorias (contexto_id, nome, natureza) VALUES (?, ?, ?)', [contextoId, nome.trim(), natureza]);
   return db.exec('SELECT last_insert_rowid() AS id')[0].values[0][0];
+}
+
+export function atualizarCategoria(db, { id, nome, natureza }) {
+  if (!Number.isInteger(id)) throw new Error('ID da categoria é obrigatório.');
+  if (nome != null) {
+    if (!String(nome).trim()) throw new Error('Nome da categoria é obrigatório.');
+    db.run('UPDATE categorias SET nome = ? WHERE id = ?', [String(nome).trim(), id]);
+  }
+  if (natureza != null) {
+    if (!['receita', 'despesa', 'ambas'].includes(natureza)) throw new Error('Natureza inválida.');
+    db.run('UPDATE categorias SET natureza = ? WHERE id = ?', [natureza, id]);
+  }
+  return true;
 }

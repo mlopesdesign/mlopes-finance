@@ -243,9 +243,9 @@ test('migração v2 → head: aplica todas as migrações em banco v0.4.1 simula
            INSERT INTO configuracoes VALUES ('tema', 'dark', 'texto', CURRENT_TIMESTAMP);`);
   // Tabelas v3 NÃO devem existir ainda
   assert.throws(() => db.exec('SELECT * FROM clientes'));
-  // Roda migração cumulativa (v2 → v3 → v4)
+  // Roda migração cumulativa (v2 → v3 → v4 → v5)
   const v = migrar(db);
-  assert.equal(v, 4);
+  assert.equal(v, 5);
   // Agora tabelas v3 existem
   assert.equal(db.exec('SELECT COUNT(*) FROM clientes').length, 1);
   assert.equal(db.exec('SELECT COUNT(*) FROM transferencias').length, 1);
@@ -256,8 +256,8 @@ test('migração v2 → head: aplica todas as migrações em banco v0.4.1 simula
   assert.equal(db.exec('SELECT COUNT(*) FROM itens_importacao').length, 1);
   assert.equal(db.exec('SELECT COUNT(*) FROM anexos').length, 1);
   assert.equal(db.exec('SELECT COUNT(*) FROM conciliacoes').length, 1);
-  // schema_version foi pra 4
-  assert.equal(db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0].values[0][0], '4');
+  // schema_version foi pra 5
+  assert.equal(db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0].values[0][0], '5');
   // Dados anteriores preservados (configuracoes tema)
   assert.equal(db.exec("SELECT valor FROM configuracoes WHERE chave = 'tema'")[0].values[0][0], 'dark');
 });

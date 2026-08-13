@@ -1,4 +1,11 @@
 
+## 0.8.7 — Edicao de contas/categorias + migracao do schema v4 (corrige NOT NULL)
+
+- **Bug 1 (quebra funcional)**: as telas "Contas" e "Categorias" nao tinham botao de Editar. So era possivel criar novo ou inativar. Se o user errasse o nome (ex: "Conta corente" em vez de "Conta corrente"), nao tinha como corrigir sem deletar e recriar. Adicionado botao "Editar" em ambas as telas + 2 rotas novas no servidor (`contas:atualizar`, `categorias:atualizar`) + 2 funcoes puras no `core/financeiro.js` (`atualizarConta`, `atualizarCategoria`).
+- **Bug 2 (tela "Importar extrato" quebrava)**: a migracao v3→v4 (v0.6.0) criou a tabela `itens_importacao` com `conta_id INTEGER NOT NULL`, mas o `conta_id` so e' definido no `confirmarImportacao` (depois do usuario escolher a conta destino), nao no `criarPreviaImportacao`. Resultado: clicar "Pre-visualizar" na tela "Importar extrato" quebrava com `NOT NULL constraint failed: itens_importacao.conta_id`. O `schema.sql` atual ja tinha `conta_id` nullable, mas a migracao antiga nao corrigia bancos que ja tinham a tabela. Nova migracao v4→v5 corrige: renomeia a tabela, recria com o schema correto, copia os dados, dropa a tabela antiga.
+- **Bump 0.8.6 → 0.8.7** em 7 lugares. 34/34 testes verde (o teste de importacao ja validava o caminho feliz).
+- **Por que esses 2 bugs passaram em 4 versoes (v0.6.0 ate v0.8.6)**: o `npm test` exercita `criarPreviaImportacao` em banco **novo** (schema v4 com `conta_id` nullable), entao o bug nao aparecia em testes. So aparecia em bancos de user que migraram de v3. E edicao de contas/categorias simplesmente nao existia no codigo — so a criacao.
+
 ## 0.8.6 — Toggle de tema sem reload (alternava em vários cliques)
 
 - **Bug**: o toggle de tema (claro/escuro) no header chamava `location.reload()` a cada clique. Recarregar a pagina inteira pra trocar `data-theme` no `<html>` e' desnecessario. Pior: se o user clicava varias vezes rapido, cada clique disparava um reload que matava o estado do anterior — o user tinha que clicar 3-4x ate o tema efetivamente mudar.

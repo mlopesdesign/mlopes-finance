@@ -9,7 +9,7 @@ import { renderRelatorios } from './telas/relatorios.js';
 import { renderContextos } from './telas/contextos.js';
 import * as updUI from './update.js';
 
-const APP_VERSION = '0.8.6';
+const APP_VERSION = '0.8.7';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = []; let appDbPath = '';
 const $ = (s) => document.querySelector(s); const app = $('#app');
@@ -211,26 +211,63 @@ function renderDashboard() {
 
 function renderContas() {
   contas = api('contas:listar', { contextoId });
-  app.innerHTML = `<div class="toolbar"><div><h1>Contas</h1><p class="subtitle">Contas bancárias, cartões e investimentos.</p></div><button class="button" id="new">Nova conta</button></div><div class="panel"><table><thead><tr><th>Nome</th><th>Tipo</th><th>Saldo inicial</th></tr></thead><tbody>${rows(contas)}</tbody></table>${!contas.length ? '<div class="empty"><div class="icon">◌</div>Nenhuma conta cadastrada.</div>' : ''}</div>`;
-  $('#new').onclick = formConta;
+  const linhas = contas.length ? contas.map((r) => `<tr><td>${r[2] || ''}</td><td>${r[3] || ''}</td><td>${money(r[4] || 0)}</td><td><button class="button ghost" data-edit="${r[0]}">Editar</button></td></tr>`).join('') : '';
+  app.innerHTML = `<div class="toolbar"><div><h1>Contas</h1><p class="subtitle">Contas bancárias, cartões e investimentos.</p></div><button class="button" id="new">Nova conta</button></div><div class="panel"><table><thead><tr><th>Nome</th><th>Tipo</th><th>Saldo inicial</th><th></th></tr></thead><tbody>${linhas}</tbody></table>${!contas.length ? '<div class="empty"><div class="icon">◌</div>Nenhuma conta cadastrada.</div>' : ''}</div>`;
+  $('#new').onclick = () => formConta();
+  document.querySelectorAll('button[data-edit]').forEach(btn => btn.onclick = () => {
+    const id = Number(btn.dataset.edit);
+    const conta = contas.find(c => c[0] === id);
+    formConta(conta);
+  });
 }
 
-function formConta() {
-  app.innerHTML = `<div class="panel"><h1>Nova conta</h1><form id="form"><div class="form-grid"><label>Nome<input name="nome" required></label><label>Tipo<select name="tipo"><option value="bancaria">Conta bancária</option><option value="cartao">Cartão de crédito</option><option value="investimento">Investimento</option></select></label><label>Saldo inicial (R$)<input name="saldo" inputmode="decimal" value="0"></label></div><div class="form-actions"><button type="button" class="button secondary" id="cancel">Cancelar</button><button class="button">Salvar</button></div></form></div>`;
+function formConta(item) {
+  const titulo = item ? 'Editar conta' : 'Nova conta';
+  const nome = item ? (item[2] || '') : '';
+  const tipo = item ? (item[3] || 'bancaria') : 'bancaria';
+  const saldo = item ? (Number(item[4] || 0) / 100).toFixed(2).replace('.', ',') : '0';
+  app.innerHTML = `<div class="panel"><h1>${titulo}</h1><form id="form"><div class="form-grid"><label>Nome<input name="nome" required value="${nome}"></label><label>Tipo<select name="tipo"><option value="bancaria" ${tipo === 'bancaria' ? 'selected' : ''}>Conta bancária</option><option value="cartao" ${tipo === 'cartao' ? 'selected' : ''}>Cartão de crédito</option><option value="investimento" ${tipo === 'investimento' ? 'selected' : ''}>Investimento</option></select></label><label>Saldo inicial (R$)<input name="saldo" inputmode="decimal" value="${saldo}"></label></div><div class="form-actions"><button type="button" class="button secondary" id="cancel">Cancelar</button><button class="button">Salvar</button></div></form></div>`;
   $('#cancel').onclick = renderContas;
-  $('#form').onsubmit = (e) => { e.preventDefault(); const f = new FormData(e.target); api('contas:criar', { contextoId, nome: f.get('nome'), tipo: f.get('tipo'), saldoInicialCentavos: Math.round(Number(String(f.get('saldo')).replace(',', '.')) * 100) }); renderContas(); };
+  $('#form').onsubmit = (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const dados = { contextoId, nome: f.get('nome'), tipo: f.get('tipo'), saldoInicialCentavos: Math.round(Number(String(f.get('saldo')).replace(',', '.')) * 100) };
+    try {
+      if (item) { api('contas:atualizar', { id: item[0], ...dados }); }
+      else { api('contas:criar', dados); }
+      renderContas();
+    } catch (err) { alert('Erro: ' + err.message); }
+  };
 }
 
 function renderCategorias() {
   categorias = api('categorias:listar', { contextoId });
-  app.innerHTML = `<div class="toolbar"><div><h1>Categorias</h1><p class="subtitle">Classificação editável para este contexto.</p></div><button class="button" id="new">Nova categoria</button></div><div class="panel"><table><thead><tr><th>Nome</th><th>Natureza</th></tr></thead><tbody>${rows(categorias)}</tbody></table>${!categorias.length ? '<div class="empty"><div class="icon">◌</div>Nenhuma categoria cadastrada.</div>' : ''}</div>`;
-  $('#new').onclick = formCategoria;
+  const linhas = categorias.length ? categorias.map((r) => `<tr><td>${r[2] || ''}</td><td>${r[3] || ''}</td><td><button class="button ghost" data-edit="${r[0]}">Editar</button></td></tr>`).join('') : '';
+  app.innerHTML = `<div class="toolbar"><div><h1>Categorias</h1><p class="subtitle">Classificação editável para este contexto.</p></div><button class="button" id="new">Nova categoria</button></div><div class="panel"><table><thead><tr><th>Nome</th><th>Natureza</th><th></th></tr></thead><tbody>${linhas}</tbody></table>${!categorias.length ? '<div class="empty"><div class="icon">◌</div>Nenhuma categoria cadastrada.</div>' : ''}</div>`;
+  $('#new').onclick = () => formCategoria();
+  document.querySelectorAll('button[data-edit]').forEach(btn => btn.onclick = () => {
+    const id = Number(btn.dataset.edit);
+    const cat = categorias.find(c => c[0] === id);
+    formCategoria(cat);
+  });
 }
 
-function formCategoria() {
-  app.innerHTML = `<div class="panel"><h1>Nova categoria</h1><form id="form"><div class="form-grid"><label>Nome<input name="nome" required></label><label>Natureza<select name="natureza"><option value="ambas">Receitas e despesas</option><option value="receita">Receita</option><option value="despesa">Despesa</option></select></label></div><div class="form-actions"><button type="button" class="button secondary" id="cancel">Cancelar</button><button class="button">Salvar</button></div></form></div>`;
+function formCategoria(item) {
+  const titulo = item ? 'Editar categoria' : 'Nova categoria';
+  const nome = item ? (item[2] || '') : '';
+  const natureza = item ? (item[3] || 'ambas') : 'ambas';
+  app.innerHTML = `<div class="panel"><h1>${titulo}</h1><form id="form"><div class="form-grid"><label>Nome<input name="nome" required value="${nome}"></label><label>Natureza<select name="natureza"><option value="ambas" ${natureza === 'ambas' ? 'selected' : ''}>Receitas e despesas</option><option value="receita" ${natureza === 'receita' ? 'selected' : ''}>Receita</option><option value="despesa" ${natureza === 'despesa' ? 'selected' : ''}>Despesa</option></select></label></div><div class="form-actions"><button type="button" class="button secondary" id="cancel">Cancelar</button><button class="button">Salvar</button></div></form></div>`;
   $('#cancel').onclick = renderCategorias;
-  $('#form').onsubmit = (e) => { e.preventDefault(); const f = new FormData(e.target); api('categorias:criar', { contextoId, nome: f.get('nome'), natureza: f.get('natureza') }); renderCategorias(); };
+  $('#form').onsubmit = (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const dados = { contextoId, nome: f.get('nome'), natureza: f.get('natureza') };
+    try {
+      if (item) { api('categorias:atualizar', { id: item[0], ...dados }); }
+      else { api('categorias:criar', dados); }
+      renderCategorias();
+    } catch (err) { alert('Erro: ' + err.message); }
+  };
 }
 
 function renderLancamentos() {

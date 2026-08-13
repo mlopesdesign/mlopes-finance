@@ -1,4 +1,4 @@
-import { criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto } from './core/financeiro.js';
+import { criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto, atualizarConta, atualizarCategoria } from './core/financeiro.js';
 import { conciliarLancamento, criarLancamento, resumo } from './core/lancamentos.js';
 import { getAllConfig, getConfig, setConfig, deleteConfig, resetConfig } from './core/configuracoes.js';
 import { criarBackup, radiografar, restaurarBackup, validarCiclo } from './core/backup.js';
@@ -22,8 +22,10 @@ export function criarApi(db, persistir = () => {}) {
     'contextos:resumo': (d) => resumoContexto(db, d.contextoId),
     'contas:listar': (d) => db.exec('SELECT * FROM contas WHERE contexto_id = ? AND ativo = 1 ORDER BY nome', [d.contextoId])[0]?.values ?? [],
     'contas:criar': (d) => { const id = criarConta(db, d); persistir(); return id; },
+    'contas:atualizar': (d) => { atualizarConta(db, d); persistir(); return true; },
     'categorias:listar': (d) => db.exec('SELECT * FROM categorias WHERE contexto_id = ? AND ativo = 1 ORDER BY nome', [d.contextoId])[0]?.values ?? [],
     'categorias:criar': (d) => { const id = criarCategoria(db, d); persistir(); return id; },
+    'categorias:atualizar': (d) => { atualizarCategoria(db, d); persistir(); return true; },
     'lancamentos:listar': (d) => db.exec(`SELECT l.*, c.nome conta_nome, ca.nome categoria_nome, cl.nome cliente_nome, p.nome projeto_nome, cc.nome centro_custo_nome FROM lancamentos l LEFT JOIN contas c ON c.id = l.conta_id LEFT JOIN categorias ca ON ca.id = l.categoria_id LEFT JOIN clientes cl ON cl.id = l.cliente_id LEFT JOIN projetos p ON p.id = l.projeto_id LEFT JOIN centros_custo cc ON cc.id = l.centro_custo_id WHERE l.contexto_id = ? ORDER BY l.data_competencia DESC, l.id DESC`, [d.contextoId])[0]?.values ?? [],
     'lancamentos:criar': (d) => { const id = criarLancamento(db, d); persistir(); return id; },
     'lancamentos:conciliar': (d) => { const out = conciliarLancamento(db, d.id); persistir(); return out; },

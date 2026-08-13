@@ -158,5 +158,35 @@ export function migrar(db) {
     db.run("INSERT OR REPLACE INTO meta (chave, valor) VALUES ('schema_version', '4')");
     destino = 4;
   }
+  if (destino < 5) {
+    // v0.8.7 — corrige itens_importacao.conta_id (era NOT NULL na migracao v3->v4, deveria ser nullable)
+    // O schema.sql novo ja tem conta_id nullable, mas a migracao v3->v4 criou com NOT NULL.
+    // Afeta todos os bancos que vieram de v3 (v0.5.x) e foram migrados pra v4 (v0.6.0+).
+    // Sem o fix, a tela "Importar extrato" quebra com "NOT NULL constraint failed: itens_importacao.conta_id".
+    // Procedimento: renomeia, recria com schema correto, copia dados, dropa o old.
+    const cols = db.exec("PRAGMA table_info(itens_importacao)");
+    const jaNullable = cols[0]?.values?.some((r) => r[1] === 'conta_id' && r[3] === 0);
+    if (!jaNullable) {
+      db.run("PRAGMA foreign_keys = OFF");
+      db.run("ALTER TABLE itens_importacao RENAME TO _itens_importacao_old");
+      db.run(`CREATE TABLE itens_importacao (
+        id INTEGER PRIMARY KEY, importacao_id INTEGER NOT NULL REFERENCES importacoes(id) ON DELETE CASCADE,
+        conta_id INTEGER REFERENCES contas(id), data_transacao TEXT NOT NULL,
+        valor_centavos INTEGER NOT NULL, descricao TEXT NOT NULL, chave_externa TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pendente','importado','ignorado','duplicado')) DEFAULT 'pendente',
+        lancamento_id INTEGER REFERENCES lancamentos(id),
+        criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(importacao_id, chave_externa)
+      )`);
+      db.run(`INSERT INTO itens_importacao (id, importacao_id, conta_id, data_transacao, valor_centavos, descricao, chave_externa, status, lancamento_id, criado_em)
+              SELECT id, importacao_id, conta_id, data_transacao, valor_centavos, descricao, chave_externa, status, lancamento_id, criado_em FROM _itens_importacao_old`);
+      db.run("DROP TABLE _itens_importacao_old");
+      db.run("CREATE INDEX IF NOT EXISTS idx_itens_importacao_status ON itens_importacao(importacao_id, status)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_itens_importacao_chave ON itens_importacao(chave_externa)");
+      db.run("PRAGMA foreign_keys = ON");
+    }
+    db.run("INSERT OR REPLACE INTO meta (chave, valor) VALUES ('schema_version', '5')");
+    destino = 5;
+  }
   return destino;
 }
