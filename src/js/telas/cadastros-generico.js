@@ -2,29 +2,29 @@
 // Reaproveita o mesmo padrao de lista + form.
 
 const MAPA = {
-  clientes: { titulo: 'Clientes', apiListar: 'clientes:listar', apiCriar: 'clientes:criar', apiAtualizar: 'clientes:atualizar', campos: [
+  clientes: { titulo: 'Clientes', apiListar: 'clientes:listar', apiCriar: 'clientes:criar', apiAtualizar: 'clientes:atualizar', apiExcluir: 'clientes:excluir', campos: [
     { nome: 'nome', label: 'Nome', tipo: 'texto', required: true },
     { nome: 'documento', label: 'Documento (CPF/CNPJ)', tipo: 'texto' },
     { nome: 'email', label: 'E-mail', tipo: 'texto' },
     { nome: 'telefone', label: 'Telefone', tipo: 'texto' },
     { nome: 'observacoes', label: 'Observacoes', tipo: 'texto' },
   ]},
-  fornecedores: { titulo: 'Fornecedores', apiListar: 'fornecedores:listar', apiCriar: 'fornecedores:criar', apiAtualizar: 'fornecedores:atualizar', campos: [
+  fornecedores: { titulo: 'Fornecedores', apiListar: 'fornecedores:listar', apiCriar: 'fornecedores:criar', apiAtualizar: 'fornecedores:atualizar', apiExcluir: 'fornecedores:excluir', campos: [
     { nome: 'nome', label: 'Nome', tipo: 'texto', required: true },
     { nome: 'documento', label: 'Documento (CPF/CNPJ)', tipo: 'texto' },
     { nome: 'observacoes', label: 'Observacoes', tipo: 'texto' },
   ]},
-  projetos: { titulo: 'Projetos', apiListar: 'projetos:listar', apiCriar: 'projetos:criar', campos: [
+  projetos: { titulo: 'Projetos', apiListar: 'projetos:listar', apiCriar: 'projetos:criar', apiExcluir: 'projetos:excluir', campos: [
     { nome: 'nome', label: 'Nome', tipo: 'texto', required: true },
     { nome: 'descricao', label: 'Descricao', tipo: 'texto' },
     { nome: 'dataInicio', label: 'Data inicio (YYYY-MM-DD)', tipo: 'texto' },
     { nome: 'dataFim', label: 'Data fim (YYYY-MM-DD)', tipo: 'texto' },
   ]},
-  centros_custo: { titulo: 'Centros de custo', apiListar: 'centros_custo:listar', apiCriar: 'centos_custo:criar', campos: [
+  centros_custo: { titulo: 'Centros de custo', apiListar: 'centros_custo:listar', apiCriar: 'centos_custo:criar', apiExcluir: 'centros_custo:excluir', campos: [
     { nome: 'nome', label: 'Nome', tipo: 'texto', required: true },
     { nome: 'descricao', label: 'Descricao', tipo: 'texto' },
   ]},
-  tags: { titulo: 'Tags', apiListar: 'tags:listar', apiCriar: 'tags:criar', campos: [
+  tags: { titulo: 'Tags', apiListar: 'tags:listar', apiCriar: 'tags:criar', apiExcluir: 'tags:excluir', campos: [
     { nome: 'nome', label: 'Nome', tipo: 'texto', required: true },
     { nome: 'cor', label: 'Cor', tipo: 'cor' },
   ]},
@@ -35,7 +35,11 @@ export function renderCadastroGenerico(tipo, contextoId, api) {
   if (!cfg) throw new Error(`Cadastro generico nao configurado para ${tipo}`);
   const app = document.getElementById('app');
   const lista = api(cfg.apiListar, { contextoId });
-  const rows = lista.length ? lista.map((r, i) => `<tr><td>${r[0]}</td><td>${r[2] || ''}</td>${cfg.campos.slice(1).map((_, j) => `<td>${r[3 + j] || ''}</td>`).join('')}<td><button class="button ghost" data-edit="${r[0]}">Editar</button></td></tr>`).join('') : '';
+  const rows = lista.length ? lista.map((r, i) => {
+    const id = r[0];
+    const nome = String(r[2] || '').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
+    return `<tr><td>${id}</td><td>${nome}</td>${cfg.campos.slice(1).map((_, j) => `<td>${r[3 + j] || ''}</td>`).join('')}<td><button class="button ghost" data-edit="${id}">Editar</button>${cfg.apiExcluir ? ` <button class="button danger" data-excluir="${id}" data-nome="${nome}">Excluir</button>` : ''}</td></tr>`;
+  }).join('') : '';
   const headers = ['ID', cfg.campos[0].label, ...cfg.campos.slice(1).map(c => c.label), ''];
   app.innerHTML = `<span class="eyebrow">CADASTROS</span><h1>${cfg.titulo}</h1><p class="subtitle">Cada cliente pode criar, editar e inativar os proprios ${cfg.titulo.toLowerCase()}.</p><div class="toolbar"><div></div><button class="button" id="novo">Novo</button></div><div class="panel"><table><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>${!lista.length ? '<div class="empty"><div class="icon">◌</div>Nenhum cadastro.</div>' : ''}</div>`;
   document.getElementById('novo').onclick = () => formCadastro(tipo, contextoId, api, null);
@@ -43,6 +47,28 @@ export function renderCadastroGenerico(tipo, contextoId, api) {
     const id = Number(btn.dataset.edit);
     const item = lista.find(r => r[0] === id);
     formCadastro(tipo, contextoId, api, item);
+  });
+  document.querySelectorAll('button[data-excluir]').forEach(btn => {
+    btn.onclick = () => {
+      const id = Number(btn.dataset.excluir);
+      const nome = btn.dataset.nome;
+      if (!confirm(`Excluir "${nome}"?\n\nSe houver dados vinculados (lancamentos, etc), sera necessario confirmar o cascade (apagar tudo junto).`)) return;
+      try {
+        api(cfg.apiExcluir, { id });
+        if (globalThis.toastOk) toastOk(`"${nome}" excluido.`);
+        renderCadastroGenerico(tipo, contextoId, api);
+      } catch (e) {
+        if (confirm(`${e.message}\n\nApagar TUDO em cascata (lancamentos vinculados, etc)? ESTA ACAO E IRREVERSIVEL.`)) {
+          try {
+            api(cfg.apiExcluir, { id, cascade: true });
+            if (globalThis.toastOk) toastOk(`"${nome}" e dados vinculados foram excluidos.`);
+            renderCadastroGenerico(tipo, contextoId, api);
+          } catch (e2) {
+            if (globalThis.toastErr) toastErr('Erro: ' + e2.message);
+          }
+        }
+      }
+    };
   });
 }
 

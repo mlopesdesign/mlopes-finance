@@ -1,11 +1,11 @@
-import { criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto, atualizarConta, atualizarCategoria } from './core/financeiro.js';
-import { conciliarLancamento, criarLancamento, resumo } from './core/lancamentos.js';
+import { criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto, atualizarConta, atualizarCategoria, excluirContexto, excluirConta, excluirCategoria } from './core/financeiro.js';
+import { conciliarLancamento, criarLancamento, resumo, excluirLancamento, estornarLancamento, editarLancamento, listarLancamentos, obterLancamento } from './core/lancamentos.js';
 import { getAllConfig, getConfig, setConfig, deleteConfig, resetConfig } from './core/configuracoes.js';
-import { criarBackup, radiografar, restaurarBackup, validarCiclo } from './core/backup.js';
-import { criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento } from './core/cadastros.js';
-import { criarTransferencia, listarTransferencias } from './core/transferencias.js';
+import { criarBackup, radiografar, restaurarBackup, validarCiclo, resetarBanco } from './core/backup.js';
+import { criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento, excluirCliente, excluirFornecedor, excluirProjeto, excluirCentroCusto, excluirTag, desvincularTagLancamento } from './core/cadastros.js';
+import { criarTransferencia, listarTransferencias, excluirTransferencia } from './core/transferencias.js';
 import { registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa } from './core/baixas.js';
-import { criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias } from './core/recorrencias.js';
+import { criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias, excluirRecorrencia, desativarRecorrencia } from './core/recorrencias.js';
 import { criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura } from './core/cartoes.js';
 import { criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao } from './core/importacao.js';
 import { balancete, comparativo, exportaCSV } from './core/relatorios.js';
@@ -20,16 +20,23 @@ export function criarApi(db, persistir = () => {}) {
     'contextos:criar': (d) => { const id = criarContexto(db, d); persistir(); return id; },
     'contextos:atualizar': (d) => { atualizarContexto(db, d); persistir(); return true; },
     'contextos:alternarAtivo': (d) => { const r = alternarContextoAtivo(db, d.id); persistir(); return r; },
+    'contextos:excluir': (d) => { const r = excluirContexto(db, d.id, { cascade: d.cascade === true }); persistir(); return r; },
     'contextos:resumo': (d) => resumoContexto(db, d.contextoId),
     'contas:listar': (d) => db.exec('SELECT * FROM contas WHERE contexto_id = ? AND ativo = 1 ORDER BY nome', [d.contextoId])[0]?.values ?? [],
     'contas:criar': (d) => { const id = criarConta(db, d); persistir(); return id; },
     'contas:atualizar': (d) => { atualizarConta(db, d); persistir(); return true; },
+    'contas:excluir': (d) => { const r = excluirConta(db, d.id, { cascade: d.cascade === true }); persistir(); return r; },
     'categorias:listar': (d) => db.exec('SELECT * FROM categorias WHERE contexto_id = ? AND ativo = 1 ORDER BY nome', [d.contextoId])[0]?.values ?? [],
     'categorias:criar': (d) => { const id = criarCategoria(db, d); persistir(); return id; },
     'categorias:atualizar': (d) => { atualizarCategoria(db, d); persistir(); return true; },
-    'lancamentos:listar': (d) => db.exec(`SELECT l.*, c.nome conta_nome, ca.nome categoria_nome, cl.nome cliente_nome, p.nome projeto_nome, cc.nome centro_custo_nome FROM lancamentos l LEFT JOIN contas c ON c.id = l.conta_id LEFT JOIN categorias ca ON ca.id = l.categoria_id LEFT JOIN clientes cl ON cl.id = l.cliente_id LEFT JOIN projetos p ON p.id = l.projeto_id LEFT JOIN centros_custo cc ON cc.id = l.centro_custo_id WHERE l.contexto_id = ? ORDER BY l.data_competencia DESC, l.id DESC`, [d.contextoId])[0]?.values ?? [],
+    'categorias:excluir': (d) => { const r = excluirCategoria(db, d.id, { cascade: d.cascade === true }); persistir(); return r; },
+    'lancamentos:listar': (d) => listarLancamentos(db, d.contextoId, { incluirEstornados: d.incluirEstornados === true, limite: d.limite ?? 500 }),
+    'lancamentos:obter': (d) => obterLancamento(db, d.id),
     'lancamentos:criar': (d) => { const id = criarLancamento(db, d); persistir(); return id; },
     'lancamentos:conciliar': (d) => { const out = conciliarLancamento(db, d.id); persistir(); return out; },
+    'lancamentos:excluir': (d) => { const r = excluirLancamento(db, d.id); persistir(); return r; },
+    'lancamentos:estornar': (d) => { const r = estornarLancamento(db, d.id, d.dataEstorno); persistir(); return r; },
+    'lancamentos:editar': (d) => { const r = editarLancamento(db, d.id, d.campos); persistir(); return r; },
     'dashboard:resumo': (d) => resumo(db, d.contextoId),
 
     // Configuracoes
@@ -43,21 +50,28 @@ export function criarApi(db, persistir = () => {}) {
     'clientes:listar': (d) => listarClientes(db, d.contextoId),
     'clientes:criar': (d) => { const id = criarCliente(db, d); persistir(); return id; },
     'clientes:atualizar': (d) => { atualizarCliente(db, d.id, d); persistir(); return true; },
+    'clientes:excluir': (d) => { const r = excluirCliente(db, d.id, { cascade: d.cascade === true }); persistir(); return r; },
     'fornecedores:listar': (d) => listarFornecedores(db, d.contextoId),
     'fornecedores:criar': (d) => { const id = criarFornecedor(db, d); persistir(); return id; },
     'fornecedores:atualizar': (d) => { atualizarFornecedor(db, d.id, d); persistir(); return true; },
+    'fornecedores:excluir': (d) => { const r = excluirFornecedor(db, d.id); persistir(); return r; },
     'projetos:listar': (d) => listarProjetos(db, d.contextoId),
     'projetos:criar': (d) => { const id = criarProjeto(db, d); persistir(); return id; },
+    'projetos:excluir': (d) => { const r = excluirProjeto(db, d.id, { cascade: d.cascade === true }); persistir(); return r; },
     'centros_custo:listar': (d) => listarCentrosCusto(db, d.contextoId),
-    'centos_custo:criar': (d) => { const id = criarCentroCusto(db, d); persistir(); return id; },
+    'centros_custo:criar': (d) => { const id = criarCentroCusto(db, d); persistir(); return id; },
+    'centros_custo:excluir': (d) => { const r = excluirCentroCusto(db, d.id, { cascade: d.cascade === true }); persistir(); return r; },
     'tags:listar': (d) => listarTags(db, d.contextoId),
     'tags:criar': (d) => { const id = criarTag(db, d); persistir(); return id; },
+    'tags:excluir': (d) => { const r = excluirTag(db, d.id); persistir(); return r; },
     'lancamento_tags:vincular': (d) => { const ok = vincularTagLancamento(db, d.lancamentoId, d.tagId); persistir(); return ok; },
+    'lancamento_tags:desvincular': (d) => { const ok = desvincularTagLancamento(db, d.lancamentoId, d.tagId); persistir(); return ok; },
     'lancamento_tags:listar': (d) => listarTagsDoLancamento(db, d.lancamentoId),
 
     // Transferencias
     'transferencias:criar': (d) => { const out = criarTransferencia(db, d); persistir(); return out; },
     'transferencias:listar': (d) => listarTransferencias(db, d.contextoId),
+    'transferencias:excluir': (d) => { const r = excluirTransferencia(db, d.id, { cascade: d.cascade === true }); persistir(); return r; },
 
     // Baixas
     'baixas:registrar': (d) => { const out = registrarBaixa(db, d); persistir(); return out; },
@@ -69,6 +83,8 @@ export function criarApi(db, persistir = () => {}) {
     'recorrencias:criar': (d) => { const id = criarRecorrencia(db, d); persistir(); return id; },
     'recorrencias:gerar': (d) => { const out = gerarProximaOcorrencia(db, d.id); persistir(); return out; },
     'recorrencias:listar': (d) => listarRecorrencias(db, d.contextoId),
+    'recorrencias:excluir': (d) => { const r = excluirRecorrencia(db, d.id, { cascade: d.cascade === true }); persistir(); return r; },
+    'recorrencias:desativar': (d) => { const r = desativarRecorrencia(db, d.id); persistir(); return r; },
 
     // Cartoes e faturas
     'cartoes:criar': (d) => { const id = criarCartao(db, d); persistir(); return id; },
@@ -83,6 +99,7 @@ export function criarApi(db, persistir = () => {}) {
     'backup:validarCiclo': () => validarCiclo(db),
     'backup:exportar': () => criarBackup(db),
     'backup:restaurar': (d) => { const r = restaurarBackup(db, d.bytes); persistir(); return r; },
+    'backup:resetar': () => { const r = resetarBanco(db); persistir(); return r; },
 
     // Importacao de extratos (OFX/CSV) — Fase 5
     'importacao:criarPrevia': (d) => { const out = criarPreviaImportacao(db, d); persistir(); return out; },

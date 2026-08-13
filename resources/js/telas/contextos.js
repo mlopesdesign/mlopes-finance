@@ -54,6 +54,7 @@ export function renderContextos(contextoId, api, onChange = null) {
                     ${!isAtual ? `<button class="button secondary ctx-usar" data-id="${id}" style="padding:4px 8px; font-size:12px;">Usar</button>` : ''}
                     <button class="button secondary ctx-editar" data-id="${id}" style="padding:4px 8px; font-size:12px;">Editar</button>
                     <button class="button secondary ctx-toggle" data-id="${id}" data-ativo="${ativo}" style="padding:4px 8px; font-size:12px;">${ativo ? 'Desativar' : 'Reativar'}</button>
+                    <button class="button danger ctx-excluir" data-id="${id}" data-nome="${String(nome).replaceAll('"','&quot;')}" style="padding:4px 8px; font-size:12px;">Excluir</button>
                   </td>
                 </tr>
               `;
@@ -90,6 +91,38 @@ export function renderContextos(contextoId, api, onChange = null) {
   document.querySelectorAll('.ctx-usar').forEach(btn => {
     btn.onclick = () => {
       if (_onChange) _onChange(Number(btn.dataset.id));
+    };
+  });
+  document.querySelectorAll('.ctx-excluir').forEach(btn => {
+    btn.onclick = () => {
+      const id = Number(btn.dataset.id);
+      const nome = btn.dataset.nome;
+      if (!confirm(`Excluir DEFINITIVAMENTE o contexto "${nome}"?\n\nOs dados vinculados NAO serao apagados por padrao. Se quiser apagar tudo, clique OK e confirme o cascade.`)) return;
+      let cascade = false;
+      try {
+        _api('contextos:excluir', { id });
+        if (globalThis.toastOk) toastOk(`Contexto "${nome}" excluido.`);
+      } catch (e) {
+        // Bloqueado por dependencias. Oferece cascade.
+        if (confirm(`${e.message}\n\nDeseja excluir TUDO (contas, categorias, lancamentos, etc) em cascata? ESTA ACAO E IRREVERSIVEL.`)) {
+          cascade = true;
+          try {
+            _api('contextos:excluir', { id, cascade: true });
+            if (globalThis.toastOk) toastOk(`Contexto "${nome}" e todos os dados vinculados foram excluidos.`);
+          } catch (e2) {
+            if (globalThis.toastErr) toastErr('Erro: ' + e2.message);
+            return;
+          }
+        } else {
+          return;
+        }
+      }
+      // Se era o contexto atual, volta pro primeiro
+      if (id === _contextoId && _onChange) {
+        const restantes = _api('contextos:listar', {});
+        if (restantes.length) _onChange(restantes[0][0]);
+      }
+      renderContextos(_contextoId, _api, _onChange);
     };
   });
 }

@@ -110,3 +110,72 @@ export function validarCiclo(db) {
   }
   return { antes, depois, tudoBate: Object.values(confere).every(Boolean) };
 }
+
+// === RESETAR BANCO ===
+// Apaga TODOS os dados (todas as tabelas transacionais) e recria os cadastros
+// iniciais (contexto "Pessoal" + categoria "Transferencia interna"). Preserva
+// o schema e a versao da migracao. NAO apaga 'configuracoes' (defaults do app)
+// nem 'meta' (versao).
+//
+// USO: o usuario quer "comecar do zero" sem perder o app. Destrutivo total.
+// A UI exige confirmacao dupla antes de chamar.
+//
+// IMPORTANTE: o chamador (servidor) DEVE fazer backup antes via criarBackup()
+// e persistir o banco DEPOIS via persistir() em ambiente.js.
+
+const TABELAS_TRANSACIONAIS = [
+  'conciliacoes',
+  'anexos',
+  'itens_importacao',
+  'importacoes',
+  'transferencias',
+  'recorrencias',
+  'faturas',
+  'cartoes',
+  'lancamento_tags',
+  'baixas',
+  'lancamentos',
+  'centros_custo',
+  'tags',
+  'projetos',
+  'fornecedores',
+  'clientes',
+  'categorias',
+  'contas',
+  'contextos_financeiros',
+];
+
+export function resetarBanco(db, agora = new Date().toISOString()) {
+  if (!db) throw new Error('Banco nao informado.');
+  db.run('BEGIN');
+  try {
+    // Ordem inversa da criacao (pra respeitar FKs)
+    for (const t of TABELAS_TRANSACIONAIS) {
+      try {
+        db.run(`DELETE FROM ${t}`);
+      } catch (e) {
+        // Se a tabela nao existir, segue
+        if (!String(e.message).match(/no such table/i)) throw e;
+      }
+    }
+    // Recria contexto padrao (seed inicial, igual a primeira instalacao)
+    db.run(`INSERT INTO contextos_financeiros (nome, descricao) VALUES (?, ?)`,
+      ['Pessoal', 'Contexto inicial criado pelo reset do banco.']);
+    const ctxId = Number(db.exec('SELECT last_insert_rowid() AS id')[0].values[0][0]);
+    // Categoria padrao do seed (necessaria pro fluxo de transferencia)
+    db.run(`INSERT INTO categorias (contexto_id, nome, natureza) VALUES (?, ?, ?)`,
+      [ctxId, 'Transferência interna', 'ambas']);
+    // Auditoria do reset
+    db.run('INSERT INTO auditoria (entidade, entidade_id, acao, dados_json, criado_em) VALUES (?, ?, ?, ?, ?)',
+      ['banco', 0, 'resetado', JSON.stringify({ contextoInicial: 'Pessoal' }), agora]);
+    db.run('COMMIT');
+  } catch (e) {
+    db.run('ROLLBACK');
+    throw e;
+  }
+  return {
+    ok: true,
+    contextoInicial: { id: Number(db.exec('SELECT id FROM contextos_financeiros WHERE nome = ?', ['Pessoal'])[0]?.values?.[0]?.[0] ?? 0), nome: 'Pessoal' },
+    tabelasLimpas: TABELAS_TRANSACIONAIS,
+  };
+}

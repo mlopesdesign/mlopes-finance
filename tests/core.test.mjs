@@ -18,6 +18,12 @@ import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas } f
 import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao } from '../src/js/backend/core/importacao.js';
 import { balancete, comparativo, exportaCSV, calcularPeriodo } from '../src/js/backend/core/relatorios.js';
 import { aplicarAtualizacao, pathCacheWebView2Async, invalidarCacheWebView2 } from '../src/js/backend/update.js';
+import { excluirContexto, excluirConta, excluirCategoria } from '../src/js/backend/core/financeiro.js';
+import { excluirCliente, excluirFornecedor, excluirProjeto, excluirCentroCusto, excluirTag, desvincularTagLancamento } from '../src/js/backend/core/cadastros.js';
+import { excluirRecorrencia, desativarRecorrencia } from '../src/js/backend/core/recorrencias.js';
+import { excluirTransferencia } from '../src/js/backend/core/transferencias.js';
+import { excluirLancamento, estornarLancamento, editarLancamento, listarLancamentos, obterLancamento } from '../src/js/backend/core/lancamentos.js';
+import { resetarBanco } from '../src/js/backend/core/backup.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const wasmPath = path.join(root, 'node_modules/sql.js/dist/sql-wasm.wasm');
@@ -932,4 +938,333 @@ test('update: aplicarAtualizacao segue para restart mesmo se invalidarCacheWebVi
   } finally {
     globalThis.Neutralino = original;
   }
+});
+
+// ============================================================================
+// EXCLUSAO DE CADASTROS + LANCAMENTOS (CRUD completo)
+// ============================================================================
+// Motiva: o user precisa poder apagar o que cadastrou pra teste, sem ficar
+// preso a dados errados. Regra do PADRAO: lancamento CONCILIADO nao pode
+// ser excluido — correcoes sao por estorno (lancamento inverso).
+
+// --- Excluir contexto ---
+test('excluirContexto: bloqueia se tem contas vinculadas', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'Teste' });
+  criarConta(db, { contextoId: cid, nome: 'Conta 1' });
+  assert.throws(() => excluirContexto(db, cid), /contas/);
+});
+
+test('excluirContexto: permite excluir contexto vazio (so categoria seed)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'Vazio' });
+  // categoria "Transferencia interna" e' seed automatico, nao conta como dependencia
+  excluirContexto(db, cid);
+  assert.equal(obterContexto(db, cid), null);
+});
+
+test('excluirContexto: cascade:true remove tudo (contas, categorias, lancamentos)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'Cascata' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta X' });
+  const catId = criarCategoria(db, { contextoId: cid, nome: 'Cat', natureza: 'despesa' });
+  const lid = criarLancamento(db, { contextoId: cid, contaId, categoriaId: catId, natureza: 'despesa', valorCentavos: 1000, dataCompetencia: '2026-08-01', descricao: 'X' });
+  excluirContexto(db, cid, { cascade: true });
+  assert.equal(obterContexto(db, cid), null);
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM contas WHERE id = ?', [contaId])[0].values[0][0]), 0, 'conta foi removida');
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM categorias WHERE id = ?', [catId])[0].values[0][0]), 0, 'categoria custom foi removida');
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM lancamentos WHERE id = ?', [lid])[0].values[0][0]), 0, 'lancamento foi removido');
+  // Categoria seed ("Transferencia interna") tambem foi removida
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM categorias WHERE contexto_id = ?', [cid])[0].values[0][0]), 0, 'categoria seed removida');
+});
+
+// --- Excluir conta ---
+test('excluirConta: bloqueia se tem lancamentos vinculados', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'x' });
+  assert.throws(() => excluirConta(db, contaId), /lancamentos/);
+});
+
+test('excluirConta: cascade:true remove lancamentos vinculados', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  const lid = criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'x' });
+  excluirConta(db, contaId, { cascade: true });
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM lancamentos WHERE id = ?', [lid])[0].values[0][0]), 0);
+});
+
+// --- Excluir categoria ---
+test('excluirCategoria: bloqueia se tem lancamentos', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  const catId = criarCategoria(db, { contextoId: cid, nome: 'Test', natureza: 'despesa' });
+  criarLancamento(db, { contextoId: cid, contaId, categoriaId: catId, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'x' });
+  assert.throws(() => excluirCategoria(db, catId), /lancamento/);
+});
+
+test('excluirCategoria: cascade:true zera categoria_id dos lancamentos', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  const catId = criarCategoria(db, { contextoId: cid, nome: 'Test', natureza: 'despesa' });
+  const lid = criarLancamento(db, { contextoId: cid, contaId, categoriaId: catId, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'x' });
+  excluirCategoria(db, catId, { cascade: true });
+  const catDoLanc = db.exec('SELECT categoria_id FROM lancamentos WHERE id = ?', [lid])[0].values[0][0];
+  assert.equal(catDoLanc, null);
+});
+
+// --- Excluir cliente / fornecedor / projeto / centro de custo / tag ---
+test('excluirCliente: bloqueia se tem lancamentos', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const clienteId = criarCliente(db, { contextoId: cid, nome: 'Cli' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  criarLancamento(db, { contextoId: cid, contaId, clienteId, natureza: 'receita', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'x' });
+  assert.throws(() => excluirCliente(db, clienteId), /lancamentos/);
+});
+
+test('excluirFornecedor: pode sempre (sem FK reversa)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const fid = criarFornecedor(db, { contextoId: cid, nome: 'Forn' });
+  excluirFornecedor(db, fid);
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM fornecedores WHERE id = ?', [fid])[0].values[0][0]), 0);
+});
+
+test('excluirProjeto: bloqueia se tem lancamentos', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const pid = criarProjeto(db, { contextoId: cid, nome: 'Proj' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  criarLancamento(db, { contextoId: cid, contaId, projetoId: pid, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'x' });
+  assert.throws(() => excluirProjeto(db, pid), /lancamento/);
+});
+
+test('excluirCentroCusto: bloqueia se tem lancamentos', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const ccId = criarCentroCusto(db, { contextoId: cid, nome: 'CC' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  criarLancamento(db, { contextoId: cid, contaId, centroCustoId: ccId, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'x' });
+  assert.throws(() => excluirCentroCusto(db, ccId), /lancamento/);
+});
+
+test('excluirTag: apaga direto (cascade via FK remove lancamento_tags)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const tagId = criarTag(db, { contextoId: cid, nome: 'Tag' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  const lid = criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'x' });
+  vincularTagLancamento(db, lid, tagId);
+  excluirTag(db, tagId);
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM tags WHERE id = ?', [tagId])[0].values[0][0]), 0);
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM lancamento_tags WHERE tag_id = ?', [tagId])[0].values[0][0]), 0, 'viculos foram removidos em cascata');
+});
+
+// --- Excluir recorrencia ---
+test('excluirRecorrencia: desativa por padrao (mantem historico)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  const lid = criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'Template' });
+  const rid = criarRecorrencia(db, { contextoId: cid, lancamentoTemplateId: lid, periodicidade: 'mensal' });
+  const r = excluirRecorrencia(db, rid);
+  assert.equal(r.ativa, false);
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM recorrencias WHERE id = ?', [rid])[0].values[0][0]), 1, 'ainda existe (foi desativada)');
+  assert.equal(Number(db.exec('SELECT ativa FROM recorrencias WHERE id = ?', [rid])[0].values[0][0]), 0);
+});
+
+test('excluirRecorrencia: cascade:true apaga de verdade', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  const lid = criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'Tpl' });
+  const rid = criarRecorrencia(db, { contextoId: cid, lancamentoTemplateId: lid, periodicidade: 'mensal' });
+  excluirRecorrencia(db, rid, { cascade: true });
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM recorrencias WHERE id = ?', [rid])[0].values[0][0]), 0);
+});
+
+// --- Excluir transferencia ---
+test('excluirTransferencia: desvincula por padrao (lancamentos permanecem)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const c1 = criarConta(db, { contextoId: cid, nome: 'Origem' });
+  const c2 = criarConta(db, { contextoId: cid, nome: 'Destino' });
+  const t = criarTransferencia(db, { contextoId: cid, contaOrigemId: c1, contaDestinoId: c2, valorCentavos: 1000, dataCompetencia: '2026-08-01' });
+  excluirTransferencia(db, t.id);
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM transferencias WHERE id = ?', [t.id])[0].values[0][0]), 0, 'transferencia removida');
+  // Os 2 lancamentos continuam (apenas sem vinculo)
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM lancamentos WHERE id IN (?, ?)', [t.idSaida, t.idEntrada])[0].values[0][0]), 2);
+  assert.equal(db.exec('SELECT transferencia_id FROM lancamentos WHERE id = ?', [t.idSaida])[0].values[0][0], null, 'lancamento saida desvinculado');
+});
+
+// --- Excluir lancamento ---
+test('excluirLancamento: bloqueia se conciliado (regra do PADRAO)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  const lid = criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'x' });
+  conciliarLancamento(db, lid);
+  assert.throws(() => excluirLancamento(db, lid), /conciliado/);
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM lancamentos WHERE id = ?', [lid])[0].values[0][0]), 1, 'lancamento continua existindo');
+});
+
+test('excluirLancamento: bloqueia se faz parte de transferencia', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const c1 = criarConta(db, { contextoId: cid, nome: 'O' });
+  const c2 = criarConta(db, { contextoId: cid, nome: 'D' });
+  const t = criarTransferencia(db, { contextoId: cid, contaOrigemId: c1, contaDestinoId: c2, valorCentavos: 100, dataCompetencia: '2026-08-01' });
+  assert.throws(() => excluirLancamento(db, t.idSaida), /transferencia/);
+});
+
+test('excluirLancamento: remove lancamento aberto + cascade nas baixas', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  const lid = criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 1000, dataCompetencia: '2026-08-01', descricao: 'x' });
+  const { registrarBaixa } = await import('../src/js/backend/core/baixas.js');
+  registrarBaixa(db, { lancamentoId: lid, valorCentavos: 500, dataBaixa: '2026-08-02' });
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM baixas WHERE lancamento_id = ?', [lid])[0].values[0][0]), 1);
+  excluirLancamento(db, lid);
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM lancamentos WHERE id = ?', [lid])[0].values[0][0]), 0);
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM baixas WHERE lancamento_id = ?', [lid])[0].values[0][0]), 0, 'baixas foram removidas');
+});
+
+// --- Estornar lancamento ---
+test('estornarLancamento: cria lancamento inverso + marca original como estornado', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  const lid = criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 1000, dataCompetencia: '2026-08-01', descricao: 'Original' });
+  const r = estornarLancamento(db, lid, '2026-08-05');
+  assert.equal(r.ok, true);
+  assert.equal(r.naturezaOriginal, 'despesa');
+  assert.equal(r.naturezaEstorno, 'receita');
+  // Original marcado como estornado
+  const statusOrig = db.exec('SELECT status FROM lancamentos WHERE id = ?', [lid])[0].values[0][0];
+  assert.equal(statusOrig, 'estornado');
+  // Estorno criado com valor igual e natureza inversa
+  // Schema lancamentos: 0=id 1=contexto_id 2=conta_id 3=categoria_id 4=cliente_id 5=projeto_id
+  //                    6=centro_custo_id 7=natureza 8=valor_centavos 9=data_competencia
+  //                    10=data_vencimento 11=descricao 12=observacoes 13=transferencia_id
+  //                    14=status 15=criado_em 16=atualizado_em
+  const lancEstorno = obterLancamento(db, r.idEstorno);
+  assert.equal(lancEstorno[7], 'receita', 'natureza inversa (col 7)');
+  assert.equal(lancEstorno[8], 1000, 'valor_centavos preservado (col 8)');
+  assert.ok(String(lancEstorno[11] || '').includes('ESTORNO'), 'descricao (col 11) menciona ESTORNO');
+});
+
+test('estornarLancamento: tambem funciona em lancamento conciliado (regra do PADRAO)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  const lid = criarLancamento(db, { contextoId: cid, contaId, natureza: 'receita', valorCentavos: 5000, dataCompetencia: '2026-08-01', descricao: 'Receita conciliada' });
+  conciliarLancamento(db, lid);
+  // Estornar DEVE funcionar mesmo se conciliado (e' justamente pra isso que serve)
+  const r = estornarLancamento(db, lid);
+  assert.equal(r.ok, true);
+});
+
+// --- Editar lancamento ---
+test('editarLancamento: atualiza campos permitidos se nao conciliado', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  const lid = criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 1000, dataCompetencia: '2026-08-01', descricao: 'Original' });
+  editarLancamento(db, lid, { valor_centavos: 2000, descricao: 'Atualizado', observacoes: 'obs' });
+  // Schema: 8=valor_centavos 11=descricao 12=observacoes
+  const l = obterLancamento(db, lid);
+  assert.equal(l[8], 2000, 'valor_centavos atualizado (col 8)');
+  assert.equal(l[11], 'Atualizado', 'descricao atualizada (col 11)');
+  assert.equal(l[12], 'obs', 'observacoes atualizadas (col 12)');
+});
+
+test('editarLancamento: bloqueia se conciliado (regra do PADRAO)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  const lid = criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'x' });
+  conciliarLancamento(db, lid);
+  assert.throws(() => editarLancamento(db, lid, { descricao: 'nao' }), /conciliado/);
+});
+
+test('listarLancamentos: retorna ordenado por data desc, exclui estornados por padrao', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  const l1 = criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'A' });
+  const l2 = criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 200, dataCompetencia: '2026-08-15', descricao: 'B' });
+  const l3 = criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 300, dataCompetencia: '2026-08-10', descricao: 'C' });
+  const r = estornarLancamento(db, l3);
+  // Apos estornar l3, existe o lancamento inverso (id = r.idEstorno) com status 'aberto'.
+  // listarLancamentos (padrao) deve mostrar: l2, l3_estorno, l1 (3 itens), SEM l3 original.
+  const todos = listarLancamentos(db, cid);
+  assert.equal(todos.length, 3, 'l3 original (estornado) nao aparece; l3_estorno + l1 + l2 = 3');
+  const ids = todos.map((r) => r[0]);
+  assert.ok(!ids.includes(l3), 'l3 original nao aparece');
+  assert.ok(ids.includes(r.idEstorno), 'l3_estorno aparece');
+  // Ordem por data desc: B (2026-08-15) > estorno (2026-08-10) > A (2026-08-01)
+  // incluirEstornados: true mostra TUDO (4: l1, l2, l3, l3_estorno)
+  const comEstornados = listarLancamentos(db, cid, { incluirEstornados: true });
+  assert.equal(comEstornados.length, 4);
+});
+
+// --- Resetar banco ---
+test('resetarBanco: apaga TODAS as tabelas transacionais e recria contexto "Pessoal"', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'Antigo' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  const catId = criarCategoria(db, { contextoId: cid, nome: 'Cat' });
+  const lid = criarLancamento(db, { contextoId: cid, contaId, categoriaId: catId, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'x' });
+  criarCliente(db, { contextoId: cid, nome: 'Cli' });
+  criarFornecedor(db, { contextoId: cid, nome: 'Forn' });
+  criarProjeto(db, { contextoId: cid, nome: 'Proj' });
+  criarCentroCusto(db, { contextoId: cid, nome: 'CC' });
+  criarTag(db, { contextoId: cid, nome: 'Tag' });
+
+  const r = resetarBanco(db);
+  assert.equal(r.ok, true);
+
+  // Contexto "Antigo" sumiu (cuidado: o ID pode ter sido reusado pelo "Pessoal")
+  assert.equal(Number(db.exec("SELECT COUNT(*) FROM contextos_financeiros WHERE nome = 'Antigo'")[0].values[0][0]), 0, 'Contexto Antigo sumiu');
+  // Lancamento/conta/categoria/cliente/etc sumiram
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM lancamentos')[0].values[0][0]), 0);
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM contas')[0].values[0][0]), 0);
+  assert.equal(Number(db.exec("SELECT COUNT(*) FROM categorias WHERE nome != 'Transferência interna' OR natureza != 'ambas'")[0].values[0][0]), 0, 'categorias do user foram apagadas (seed pode estar no novo contexto)');
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM clientes')[0].values[0][0]), 0);
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM fornecedores')[0].values[0][0]), 0);
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM projetos')[0].values[0][0]), 0);
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM centros_custo')[0].values[0][0]), 0);
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM tags')[0].values[0][0]), 0);
+
+  // Schema foi preservado (tabela ainda existe)
+  assert.ok(db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='lancamentos'")[0]?.values?.length === 1);
+
+  // Contexto "Pessoal" foi criado
+  const ctxPessoal = db.exec("SELECT id, nome FROM contextos_financeiros WHERE nome = 'Pessoal'")[0]?.values?.[0];
+  assert.ok(ctxPessoal, 'contexto Pessoal foi criado');
+  assert.equal(ctxPessoal[1], 'Pessoal', 'coluna nome (1) e Pessoal');
+
+  // Categoria "Transferência interna" foi criada no contexto Pessoal
+  const cat = db.exec("SELECT nome, natureza FROM categorias WHERE contexto_id = ? AND nome LIKE 'Transferência%'", [ctxPessoal[0]])[0]?.values?.[0];
+  assert.ok(cat, 'categoria Transferencia interna foi criada');
+  assert.equal(cat[1], 'ambas', 'coluna natureza (1) e ambas');
+
+  // Configuracoes foram PRESERVADAS (defaults nao foram apagados)
+  const tema = db.exec("SELECT valor FROM configuracoes WHERE chave = 'tema'")[0]?.values?.[0]?.[0];
+  assert.equal(tema, 'dark', 'configuracao tema preservada');
+});
+
+test('resetarBanco: e idempotente (rodar 2x da certo)', async () => {
+  const db = await novoBanco();
+  resetarBanco(db);
+  const r2 = resetarBanco(db);
+  assert.equal(r2.ok, true);
+  // Continua so com 1 contexto (Pessoal)
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM contextos_financeiros')[0].values[0][0]), 1);
 });

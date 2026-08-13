@@ -75,3 +75,28 @@ export function listarRecorrencias(db, contextoId) {
   if (!Number.isInteger(contextoId)) return [];
   return db.exec('SELECT * FROM recorrencias WHERE contexto_id = ? AND ativa = 1 ORDER BY id', [contextoId])[0]?.values ?? [];
 }
+
+// === EXCLUSAO ===
+// Por padrao, desativa a recorrencia (marca ativa=0) sem perder o historico.
+// A flag `cascade: true` apaga de verdade (lancamentos ja gerados NAO sao
+// apagados - isso e' decisao do usuario, separada).
+
+export function desativarRecorrencia(db, id) {
+  if (!Number.isInteger(id)) throw new Error('id obrigatorio.');
+  const r = db.exec('SELECT id FROM recorrencias WHERE id = ?', [id])[0]?.values?.[0];
+  if (!r) throw new Error('Recorrencia nao encontrada.');
+  db.run('UPDATE recorrencias SET ativa = 0 WHERE id = ?', [id]);
+  return { ok: true, id, ativa: false };
+}
+
+export function excluirRecorrencia(db, id, { cascade = false } = {}) {
+  if (!Number.isInteger(id)) throw new Error('id obrigatorio.');
+  const r = db.exec('SELECT id FROM recorrencias WHERE id = ?', [id])[0]?.values?.[0];
+  if (!r) throw new Error('Recorrencia nao encontrada.');
+  if (!cascade) {
+    // Seguro: desativa em vez de apagar
+    return desativarRecorrencia(db, id);
+  }
+  db.run('DELETE FROM recorrencias WHERE id = ?', [id]);
+  return { ok: true, id, cascade, ativa: false };
+}

@@ -91,6 +91,10 @@ export function renderConfiguracoes(contextoId, api, dbPath = '') {
               <div><button class="button danger" id="cfg-reset">Restaurar padrão de fábrica</button></div>
             </div>
             <div class="field-row">
+              <div><div class="field-label" style="color: var(--danger);">⚠ Resetar banco de dados</div><div class="field-help">Apaga <strong>TODOS</strong> os dados (contextos, contas, lançamentos, importações, etc) e recria apenas o contexto padrão "Pessoal". Configurações são preservadas. <strong>Irreversível</strong> — faça backup antes.</div></div>
+              <div><button class="button danger" id="cfg-resetar-banco">Resetar banco (apagar tudo)</button></div>
+            </div>
+            <div class="field-row">
               <div><div class="field-label">Banco de dados</div><div class="field-help" id="cfg-db-path">Carregando…</div></div>
               <div></div>
             </div>
@@ -144,6 +148,8 @@ export function renderConfiguracoes(contextoId, api, dbPath = '') {
   // location.reload() causava tela branca entre unload e load (boot do app).
   document.getElementById('cfg-cancelar').onclick = cancelar;
   document.getElementById('cfg-reset').onclick = resetar;
+  const btnResetarBanco = document.getElementById('cfg-resetar-banco');
+  if (btnResetarBanco) btnResetarBanco.onclick = resetarBanco;
   document.getElementById('cfg-exportar-backup').onclick = exportarBackup;
   document.getElementById('cfg-restaurar-backup').onclick = restaurarBackup;
   document.getElementById('cfg-radiografar').onclick = radiografar;
@@ -310,6 +316,35 @@ function radiografar() {
   } catch (e) {
     setBackupStatus('Erro: ' + e.message, true);
     if (globalThis.toastErr) toastErr('Erro na radiografia: ' + e.message);
+  }
+}
+
+function resetarBanco() {
+  // Zona destrutiva: 3 confirmacoes escalonadas.
+  if (!confirm('⚠ ATENCAO: isto vai apagar TODOS os dados do banco.\n\nContextos, contas, categorias, clientes, fornecedores, projetos, centros de custo, tags, lancamentos, baixas, recorrencias, cartoes, faturas, transferencias, importacoes, anexos, conciliacoes - tudo.\n\nConfiguracoes serao preservadas.\n\nEsta ACAO E IRREVERSIVEL.\n\nDeseja continuar?')) {
+    setBackupStatus('Reset cancelado.', false);
+    return;
+  }
+  if (!confirm('ULTIMA CONFIRMACAO:\n\nVoce tem certeza ABSOLUTA que quer apagar tudo?\n\n(Recomendo fazer backup antes via "Exportar backup" no campo acima.)')) {
+    setBackupStatus('Reset cancelado.', false);
+    return;
+  }
+  // Confirma digitando RESET (anti-clique-acidental)
+  const digitado = prompt('Digite RESET (em maiusculas) para confirmar:');
+  if (digitado !== 'RESET') {
+    setBackupStatus('Reset cancelado (confirmacao textual incorreta).', false);
+    return;
+  }
+  try {
+    const out = _api('backup:resetar');
+    setBackupStatus(`Banco resetado. ${out.contextoInicial?.nome ? 'Contexto inicial: ' + out.contextoInicial.nome + '. ' : ''}Recarregando...`, false);
+    if (globalThis.toastOk) toastOk('Banco resetado. Recarregando interface...');
+    // Reset e' raro + destrutivo. location.reload() e' aceitavel aqui
+    // (diferente do Salvar/Cancelar/Resetar config que NAO recarregam).
+    setTimeout(() => location.reload(), 1200);
+  } catch (e) {
+    setBackupStatus('Erro: ' + e.message, true);
+    if (globalThis.toastErr) toastErr('Erro ao resetar banco: ' + e.message);
   }
 }
 

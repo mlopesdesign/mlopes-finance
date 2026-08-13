@@ -124,3 +124,102 @@ export function vincularTagLancamento(db, lancamentoId, tagId) {
 export function listarTagsDoLancamento(db, lancamentoId) {
   return db.exec(`SELECT t.* FROM tags t JOIN lancamento_tags lt ON lt.tag_id = t.id WHERE lt.lancamento_id = ?`, [lancamentoId])[0]?.values ?? [];
 }
+
+// === EXCLUSAO ===
+// Regra: bloqueia exclusao se houver dependencias (lancamentos, etc).
+// A flag `cascade: true` apaga em cascata, na ordem correta.
+
+export function excluirCliente(db, id, { cascade = false } = {}) {
+  if (!Number.isInteger(id)) throw new Error('id obrigatorio.');
+  const r = db.exec('SELECT id, nome FROM clientes WHERE id = ?', [id])[0]?.values?.[0];
+  if (!r) throw new Error('Cliente nao encontrado.');
+  const lancs = Number(db.exec('SELECT COUNT(*) FROM lancamentos WHERE cliente_id = ?', [id])[0]?.values?.[0]?.[0] ?? 0);
+  const projs = Number(db.exec('SELECT COUNT(*) FROM projetos WHERE cliente_id = ?', [id])[0]?.values?.[0]?.[0] ?? 0);
+  const deps = [];
+  if (lancs > 0) deps.push({ label: 'lancamentos', total: lancs });
+  if (projs > 0) deps.push({ label: 'projetos', total: projs });
+  if (deps.length > 0 && !cascade) {
+    throw new Error(`Cliente "${r[1]}" tem dados vinculados: ${deps.map((d) => `${d.total} ${d.label}`).join(', ')}.`);
+  }
+  db.run('BEGIN');
+  try {
+    if (cascade) {
+      // projetos do cliente: cascateia nos lancamentos
+      const projIds = db.exec('SELECT id FROM projetos WHERE cliente_id = ?', [id])[0]?.values?.map((p) => p[0]) ?? [];
+      for (const pid of projIds) {
+        db.run('UPDATE lancamentos SET projeto_id = NULL WHERE projeto_id = ?', [pid]);
+        db.run('DELETE FROM projetos WHERE id = ?', [pid]);
+      }
+      db.run('UPDATE lancamentos SET cliente_id = NULL WHERE cliente_id = ?', [id]);
+    }
+    db.run('DELETE FROM clientes WHERE id = ?', [id]);
+    db.run('COMMIT');
+  } catch (e) {
+    db.run('ROLLBACK');
+    throw e;
+  }
+  return { ok: true, id, cascade };
+}
+
+export function excluirFornecedor(db, id) {
+  if (!Number.isInteger(id)) throw new Error('id obrigatorio.');
+  const r = db.exec('SELECT id, nome FROM fornecedores WHERE id = ?', [id])[0]?.values?.[0];
+  if (!r) throw new Error('Fornecedor nao encontrado.');
+  db.run('DELETE FROM fornecedores WHERE id = ?', [id]);
+  return { ok: true, id };
+}
+
+export function excluirProjeto(db, id, { cascade = false } = {}) {
+  if (!Number.isInteger(id)) throw new Error('id obrigatorio.');
+  const r = db.exec('SELECT id, nome FROM projetos WHERE id = ?', [id])[0]?.values?.[0];
+  if (!r) throw new Error('Projeto nao encontrado.');
+  const lancs = Number(db.exec('SELECT COUNT(*) FROM lancamentos WHERE projeto_id = ?', [id])[0]?.values?.[0]?.[0] ?? 0);
+  if (lancs > 0 && !cascade) {
+    throw new Error(`Projeto "${r[1]}" tem ${lancs} lancamento(s) vinculado(s).`);
+  }
+  db.run('BEGIN');
+  try {
+    if (cascade) db.run('UPDATE lancamentos SET projeto_id = NULL WHERE projeto_id = ?', [id]);
+    db.run('DELETE FROM projetos WHERE id = ?', [id]);
+    db.run('COMMIT');
+  } catch (e) {
+    db.run('ROLLBACK');
+    throw e;
+  }
+  return { ok: true, id, cascade };
+}
+
+export function excluirCentroCusto(db, id, { cascade = false } = {}) {
+  if (!Number.isInteger(id)) throw new Error('id obrigatorio.');
+  const r = db.exec('SELECT id, nome FROM centros_custo WHERE id = ?', [id])[0]?.values?.[0];
+  if (!r) throw new Error('Centro de custo nao encontrado.');
+  const lancs = Number(db.exec('SELECT COUNT(*) FROM lancamentos WHERE centro_custo_id = ?', [id])[0]?.values?.[0]?.[0] ?? 0);
+  if (lancs > 0 && !cascade) {
+    throw new Error(`Centro de custo "${r[1]}" tem ${lancs} lancamento(s) vinculado(s).`);
+  }
+  db.run('BEGIN');
+  try {
+    if (cascade) db.run('UPDATE lancamentos SET centro_custo_id = NULL WHERE centro_custo_id = ?', [id]);
+    db.run('DELETE FROM centros_custo WHERE id = ?', [id]);
+    db.run('COMMIT');
+  } catch (e) {
+    db.run('ROLLBACK');
+    throw e;
+  }
+  return { ok: true, id, cascade };
+}
+
+export function excluirTag(db, id) {
+  if (!Number.isInteger(id)) throw new Error('id obrigatorio.');
+  const r = db.exec('SELECT id, nome FROM tags WHERE id = ?', [id])[0]?.values?.[0];
+  if (!r) throw new Error('Tag nao encontrada.');
+  // cascade: lancamento_tags apaga junto (FK ON DELETE CASCADE)
+  db.run('DELETE FROM tags WHERE id = ?', [id]);
+  return { ok: true, id };
+}
+
+export function desvincularTagLancamento(db, lancamentoId, tagId) {
+  if (!Number.isInteger(lancamentoId) || !Number.isInteger(tagId)) throw new Error('ids obrigatorios.');
+  db.run('DELETE FROM lancamento_tags WHERE lancamento_id = ? AND tag_id = ?', [lancamentoId, tagId]);
+  return true;
+}

@@ -44,3 +44,38 @@ export function listarTransferencias(db, contextoId) {
                   WHERE t.contexto_id = ?
                   ORDER BY t.data_transferencia DESC`, [contextoId])[0]?.values ?? [];
 }
+
+// === EXCLUSAO ===
+// Exclui a transferencia e DESVINcula os 2 lancamentos (origem/destino).
+// Os lancamentos em si NAO sao apagados: o usuario pode ter registrado
+// aquela movimentacao por outros motivos. Apenas perdem o vinculo com a
+// transferencia. cascade:true apaga TUDO (lancamentos + baixas + tag links).
+
+export function excluirTransferencia(db, id, { cascade = false } = {}) {
+  if (!Number.isInteger(id)) throw new Error('id obrigatorio.');
+  const r = db.exec('SELECT id, lancamento_origem_id, lancamento_destino_id FROM transferencias WHERE id = ?', [id])[0]?.values?.[0];
+  if (!r) throw new Error('Transferencia nao encontrada.');
+  const [_, idSaida, idEntrada] = r;
+  db.run('BEGIN');
+  try {
+    if (cascade) {
+      // Apaga as baixas e os 2 lancamentos
+      for (const lid of [idSaida, idEntrada]) {
+        if (lid == null) continue;
+        db.run('DELETE FROM baixas WHERE lancamento_id = ?', [lid]);
+        // lancamento_tags tem cascade
+        db.run('UPDATE itens_importacao SET lancamento_id = NULL, status = ? WHERE lancamento_id = ?', ['ignorado', lid]);
+        db.run('DELETE FROM lancamentos WHERE id = ?', [lid]);
+      }
+    } else {
+      // Apenas desvincula
+      db.run('UPDATE lancamentos SET transferencia_id = NULL WHERE id IN (?, ?)', [idSaida, idEntrada]);
+    }
+    db.run('DELETE FROM transferencias WHERE id = ?', [id]);
+    db.run('COMMIT');
+  } catch (e) {
+    db.run('ROLLBACK');
+    throw e;
+  }
+  return { ok: true, id, cascade, lancamentosDesvinculados: [idSaida, idEntrada].filter(Boolean) };
+}
