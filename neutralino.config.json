@@ -1,6 +1,6 @@
 {
   "applicationId": "com.mlopesdesign.mlopesfinance",
-  "version": "0.8.10",
+  "version": "0.8.11",
   "url": "/",
   "documentRoot": "/resources/",
   "defaultMode": "window",
@@ -34,7 +34,7 @@
     "resourcesPath": "/resources",
     "frontendLibrary": "neutralino.js",
     "clientLibrary": "neutralino.js",
-    "binaryVersion": "6.9.0",
+    "binaryVersion": "6.9.1",
     "clientVersion": "6.9.0"
   },
   "applicationName": "MLopes Finance",
