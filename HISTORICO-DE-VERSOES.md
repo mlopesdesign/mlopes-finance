@@ -1,7 +1,24 @@
 
+## 0.8.14 — Invalida cache do WebView2 antes do restartProcess (fix loop auto-update)
+
+- **Sintoma (loop de "tem atualização")**: app instalado em v0.8.12 (ou v0.8.13 anterior) detectava v0.8.14, baixava, aplicava, `restartProcess` rodava, app reabria, pill de atualização **continuava** oferecendo v0.8.14. Loop eterno. Print do user às 03:00: "ele instala e volta, mas continua dizendo que tem atualizaço".
+- **Causa raiz** (`src/js/backend/update.js::aplicarAtualizacao`): o `Neutralino.app.restartProcess()` reinicia o binário do app mas **NÃO invalida o cache HTTP persistente do WebView2** em `%APPDATA%\MLopesFinance.exe\EBWebView\Cache\Cache_Data\`. O Chromium serve o `app.js`, `index.html` e CSS antigos do cache em vez de bater no Neutralino localhost de novo. Resultado: a UI carrega o JS da versão anterior, mostra `VERSÃO 0.8.13`, e o auto-update re-oferece v0.8.14. Confirmado em diagnóstico: bundle instalado em disco = SHA `4139B9A7…27` (v0.8.13, idêntico ao GH), mas a UI continuava mostrando v0.8.12. 159 MB de cache HTTP no diretório do WebView2.
+- **Correção** (`src/js/backend/update.js`): nova função `invalidarCacheWebView2()` que faz `cmd.exe /c rd /S /Q` em `Cache\Cache_Data`, `Code Cache` e `GPUCache` antes do `restartProcess`. Falhas são toleradas: se o WebView2 estiver com arquivos em uso (esperado em algumas sessões), o restart fecha os handles e a próxima execução parte de um cache zerado. O update NÃO depende da limpeza do cache para ter sucesso — o `move /Y` já substituiu o bundle em disco.
+- **5 testes novos** (47/47 verde): path do cache, `rd /S /Q` nos 3 alvos, tolerância a erros do `execCommand` (1 falha, 2 continuam), ordem `move → 3×rd → restart`, restart mesmo se `rd` falhar.
+- **Bump 0.8.13 → 0.8.14** em 7 lugares. Source commitado (38df779), release v0.8.14 publicada com `resources.neu` (5.66 MB, SHA `A2ABF97B…3B`). App da máquina atualizado manualmente + cache WebView2 zerado (backup `.bak-20260813-085951` preservado). Próxima abertura do app já roda em v0.8.14 sem precisar de auto-update.
+- **Lição** (entra no MEMORY): `Neutralino.app.restartProcess()` não invalida o cache do WebView2. Em QUALQUER auto-update de app Neutralino, sempre limpar `Cache\Cache_Data`, `Code Cache` e `GPUCache` em `%APPDATA%\<binaryName>.exe\EBWebView\` antes do restart. Sem isso, o app carrega o `app.js` antigo do disco e o usuário vê a versão anterior.
+
+## 0.8.13 — Bump APP_VERSION (tentativa de fix do loop)
+
+- **Sintoma**: v0.8.12 detectava v0.8.13 no GH, baixava, aplicava, mas o app continuava mostrando v0.8.12. Loop de "tem atualização".
+- **Tentativa de fix**: bumpar o `APP_VERSION` no source (v0.8.12 → v0.8.13) e republicar o bundle. Source commitado, release v0.8.13 re-publicada com SHA `4139B9A7…27`.
+- **Por que NÃO funcionou**: o `restartProcess` reinicia o binário mas mantém o cache HTTP do WebView2 (`%APPDATA%\MLopesFinance.exe\EBWebView\Cache\Cache_Data\`). O Chromium serve o `app.js` antigo do cache em vez de bater no Neutralino localhost. → corrigido de verdade em v0.8.14.
+- **Lição**: bumpar versão não é fix de cache. Auto-update de app Neutralino precisa SEMPRE invalidar o cache do WebView2 (ver v0.8.14).
+
 ## 0.8.10 — Corrige auto-update + botão "Excluir N lanç."
 
-- **Bug crítico no auto-update (seção 5 do PADRAO)**: o `update.js` usava paths hardcoded com `%LOCALAPPDATA%`. O `os.execCommand` do Neutralino chama `cmd.exe`, mas esse `cmd.exe` NÃO expande a env var (diferente de um shell normal). Resultado: curl.exe recebia o path LITERAL `%LOCALAPPDATA%\...` e falhava com `Unable to open path`. Log do app: `Falha: Unable to open path %LOCALAPPDATA%\Programs\MLopes Financeesources.neu.tmp`.
+- **Bug crítico no auto-update (seção 5 do PADRAO)**: o `update.js` usava paths hardcoded com `%LOCALAPPDATA%`. O `os.execCommand` do Neutralino chama `cmd.exe`, mas esse `cmd.exe` NÃO expande a env var (diferente de um shell normal). Resultado: curl.exe recebia o path LITERAL `%LOCALAPPDATA%\...` e falhava com `Unable to open path`. Log do app: `Falha: Unable to open path %LOCALAPPDATA%\Programs\MLopes Finance
+esources.neu.tmp`.
 - **Fix**: `update.js` resolve o path em runtime via `Neutralino.os.getEnv('LOCALAPPDATA')` e cacheia. `cmd.exe` recebe o path ABSOLUTO. Fallbacks sincronos preservados pra testes.
 - **Botão "Excluir N lanç."**: nova função `excluirLancamentosImportacao(db, importacaoId)` que deleta todos os lançamentos vinculados a uma importação (baixas em cascade). **BLOQUEIA** se algum lançamento estiver conciliado (regra de auditoria do PADRAO/AGENTS). UI com botão em cada linha do histórico de importações.
 - **Correção de FK**: a ordem de operações no cascade foi ajustada pra evitar `FOREIGN KEY constraint failed` (`itens_importacao.lancamento_id` é limpa ANTES de deletar os lançamentos).

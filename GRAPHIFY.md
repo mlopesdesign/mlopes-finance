@@ -1,6 +1,6 @@
 # GRAPHIFY — Mapa técnico do MLopes Finance
 
-> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-13T03:30:25.268Z.
+> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-13T12:01:29.230Z.
 > Não editar manualmente. Fonte da verdade: `src/` e `tools/`.
 
 ## Resumo
@@ -60,7 +60,7 @@ MLopes Finance — backend de configurações
 
 MLopes Finance — importacao de extratos OFX e CSV
 
-**Exports:** `parsearOFX`, `parsearCSV`, `criarPreviaImportacao`, `confirmarImportacao`, `listarImportacoes`, `cancelarImportacao`
+**Exports:** `parsearOFX`, `parsearCSV`, `criarPreviaImportacao`, `confirmarImportacao`, `listarImportacoes`, `cancelarImportacao`, `excluirImportacao`, `excluirLancamentosImportacao`
 
 **Imports:** criarLancamento ← `./lancamentos.js`
 
@@ -120,13 +120,13 @@ MLopes Finance — atualizacao online (parte PURA: sem DOM, sem Neutralino, sem 
 
 **Exports:** `criarApi`
 
-**Imports:** criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto, atualizarConta, atualizarCategoria ← `./core/financeiro.js`; conciliarLancamento, criarLancamento, resumo ← `./core/lancamentos.js`; getAllConfig, getConfig, setConfig, deleteConfig, resetConfig ← `./core/configuracoes.js`; criarBackup, radiografar, restaurarBackup, validarCiclo ← `./core/backup.js`; criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento ← `./core/cadastros.js`; criarTransferencia, listarTransferencias ← `./core/transferencias.js`; registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa ← `./core/baixas.js`; criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias ← `./core/recorrencias.js`; criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura ← `./core/cartoes.js`; criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao ← `./core/importacao.js`; balancete, comparativo, exportaCSV ← `./core/relatorios.js`; compararVersao ← `./core/update.js`; checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, listarReleases, pathTempInstalador ← `./update.js`; APP_VERSION ← `./ambiente.js`
+**Imports:** criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto, atualizarConta, atualizarCategoria ← `./core/financeiro.js`; conciliarLancamento, criarLancamento, resumo ← `./core/lancamentos.js`; getAllConfig, getConfig, setConfig, deleteConfig, resetConfig ← `./core/configuracoes.js`; criarBackup, radiografar, restaurarBackup, validarCiclo ← `./core/backup.js`; criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento ← `./core/cadastros.js`; criarTransferencia, listarTransferencias ← `./core/transferencias.js`; registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa ← `./core/baixas.js`; criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias ← `./core/recorrencias.js`; criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura ← `./core/cartoes.js`; criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao ← `./core/importacao.js`; balancete, comparativo, exportaCSV ← `./core/relatorios.js`; compararVersao ← `./core/update.js`; checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, listarReleases, pathTempInstalador ← `./update.js`; APP_VERSION ← `./ambiente.js`
 
 ### `src/js/backend/update.js`
 
 MLopes Finance — atualizacao online (parte IMPURA: usa Neutralino + curl.exe).
 
-**Exports:** `pathTempInstalador`, `pathRecursoInstalado`, `checarAtualizacao`, `listarReleases`, `baixarAtualizacao`, `aplicarAtualizacao`
+**Exports:** `pathCacheWebView2Async`, `invalidarCacheWebView2`, `pathTempInstalador`, `pathRecursoInstalado`, `checarAtualizacao`, `listarReleases`, `baixarAtualizacao`, `aplicarAtualizacao`
 
 **Imports:** compararVersao, escolherAsset, renderizarMarkdownSimples ← `./core/update.js`
 
@@ -160,7 +160,7 @@ MLopes Finance — Tela de Importação de Extratos (OFX / CSV)
 
 **Exports:** `renderImportacao`
 
-**API calls:** `contas:listar`, `importacao:criarPrevia`, `importacao:listarItens`, `importacao:confirmar`, `importacao:cancelar`, `importacao:listar`
+**API calls:** `contas:listar`, `contextos:listar`, `importacao:criarPrevia`, `importacao:listarItens`, `importacao:confirmar`, `importacao:cancelar`, `importacao:listar`, `importacao:excluir`, `importacao:excluirLancamentos`
 
 ### `src/js/telas/relatorios.js`
 
