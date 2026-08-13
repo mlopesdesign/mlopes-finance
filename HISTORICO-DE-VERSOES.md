@@ -1,4 +1,17 @@
 
+## 0.8.17 — Botão "Excluir todos" em todas as telas de lista
+
+- **Motivação do user**: "pq não tem a opção de deletar tudo?". O botão de resetar banco em Configurações > Avançado (3 confirmações + digitar "RESET") tem fricção demais pra quem só quer limpar uma tela. Adicionei botão "🗑 Excluir todos (N)" direto no header de cada tela de lista.
+- **Telas com botão agora** (com confirmação dupla: "Excluir TODOS os N?" + "Confirma? (última chance)"):
+  - **Lançamentos**: `excluirTodosLancamentos` apaga TUDO do contexto (cascade: baixas, transferências, tags). Mantém cadastros.
+  - **Baixas e saldos**: mesmo atalho de Lançamentos.
+  - **Transferências**: "🗑 Desvincular todas (N)" desvincula todas (preserva os 2 lançamentos de cada, que viram independentes).
+  - **Contas**: "🗑 Excluir todas (N)" apaga cada conta + seus lançamentos em cascata.
+  - **Categorias**: "🗑 Excluir todas (N)" idem.
+- **Backend** (`core/lancamentos.js`): nova função `excluirTodosLancamentos(db, contextoId)`. **Ordem do DELETE é crítica** (FK NO ACTION): 1) `UPDATE lancamentos SET transferencia_id=NULL`, 2) `DELETE FROM transferencias`, 3) `UPDATE itens_importacao SET lancamento_id=NULL`, 4) `DELETE FROM baixas`, 5) `DELETE FROM lancamentos` (cascade: `lancamento_tags` via FK). Tudo em `BEGIN/COMMIT`, `ROLLBACK` em qualquer erro.
+- **2 testes novos** (76/76 verde): cascade correto + idempotência.
+- **Bump v0.8.16 → v0.8.17** (7 lugares). Bundle v0.8.17 (5.72 MB, SHA `554DD013…D3D`, EXE FileVersion `0.8.17.0`) instalado na máquina do Marcio, backup v0.8.16 preservado.
+
 ## 0.8.16 — AUDITORIA: conserta 4 bugs + 4 ligações UI/backend
 
 Auditoria completa do app cruzando backend (86 rotas), servidor e UI (5 telas + 14 entradas na sidebar). Encontrados 4 bugs que QUEBRAM o app e 4 funcionalidades com backend pronto mas sem botão na UI.
