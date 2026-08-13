@@ -17,6 +17,7 @@ import { criarRecorrencia, gerarProximaOcorrencia } from '../src/js/backend/core
 import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas } from '../src/js/backend/core/cartoes.js';
 import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao } from '../src/js/backend/core/importacao.js';
 import { balancete, comparativo, exportaCSV, calcularPeriodo } from '../src/js/backend/core/relatorios.js';
+import { aplicarAtualizacao, pathCacheWebView2Async, invalidarCacheWebView2 } from '../src/js/backend/update.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const wasmPath = path.join(root, 'node_modules/sql.js/dist/sql-wasm.wasm');
@@ -788,4 +789,147 @@ test('contextos: resumoContexto agrega receitas/despesas/contas', async () => {
   assert.equal(r.saldo, 70000);
   assert.equal(r.lancamentos, 2);
   assert.equal(r.contas, 1);
+});
+
+// ============================================================================
+// update (auto-update): invalida cache do WebView2 antes do restartProcess
+// ============================================================================
+// Bug do loop (v0.8.13): o `Neutralino.app.restartProcess()` reinicia o
+// binario mas NAO invalida o cache HTTP do WebView2 em
+// %APPDATA%\\MLopesFinance.exe\\EBWebView. O Chromium serve o app.js
+// antigo do disco e o app continua mostrando a versao anterior
+// (loop de "tem atualizacao"). Estes testes fixam o contrato:
+//   1. pathCacheWebView2Async retorna o path certo
+//   2. invalidarCacheWebView2 faz rd /S /Q nos 3 alvos
+//   3. aplicarAtualizacao chama invalidarCacheWebView2 ANTES do restartProcess
+
+test('update: pathCacheWebView2Async retorna <APPDATA>\\MLopesFinance.exe\\EBWebView', async () => {
+  const original = globalThis.Neutralino;
+  globalThis.Neutralino = { os: { getEnv: async (k) => k === 'APPDATA' ? 'C:\\Users\\fake\\AppData\\Roaming' : null } };
+  try {
+    const p = await pathCacheWebView2Async();
+    assert.equal(p, 'C:\\Users\\fake\\AppData\\Roaming\\MLopesFinance.exe\\EBWebView');
+  } finally {
+    globalThis.Neutralino = original;
+  }
+});
+
+test('update: invalidarCacheWebView2 faz rd /S /Q em Cache\\Cache_Data, Code Cache e GPUCache', async () => {
+  const original = globalThis.Neutralino;
+  const calls = [];
+  globalThis.Neutralino = {
+    os: {
+      getEnv: async (k) => k === 'APPDATA' ? 'C:\\Users\\fake\\AppData\\Roaming' : null,
+      execCommand: async (cmd) => { calls.push(cmd); return { exitCode: 0, stdOut: '', stdErr: '' }; },
+    },
+  };
+  try {
+    const r = await invalidarCacheWebView2();
+    assert.equal(r.ok, true);
+    assert.equal(calls.length, 3);
+    assert.ok(calls[0].includes('C:\\Users\\fake\\AppData\\Roaming\\MLopesFinance.exe\\EBWebView\\Cache\\Cache_Data'), '1o alvo deve ser Cache\\Cache_Data: ' + calls[0]);
+    assert.ok(calls[1].includes('Code Cache'), '2o alvo deve ser Code Cache: ' + calls[1]);
+    assert.ok(calls[2].includes('GPUCache'), '3o alvo deve ser GPUCache: ' + calls[2]);
+    for (const c of calls) {
+      assert.ok(c.startsWith('cmd.exe /c rd /S /Q "'), 'cmd deve ser rd /S /Q: ' + c);
+    }
+  } finally {
+    globalThis.Neutralino = original;
+  }
+});
+
+test('update: invalidarCacheWebView2 e tolerante a erros do execCommand (um falha, outros continuam)', async () => {
+  const original = globalThis.Neutralino;
+  const calls = [];
+  globalThis.Neutralino = {
+    os: {
+      getEnv: async (k) => k === 'APPDATA' ? 'C:\\Users\\fake' : null,
+      execCommand: async (cmd) => {
+        calls.push(cmd);
+        if (cmd.includes('Cache\\Cache_Data')) throw new Error('arquivo em uso');
+        return { exitCode: 0, stdOut: '', stdErr: '' };
+      },
+    },
+  };
+  try {
+    const r = await invalidarCacheWebView2();
+    assert.equal(r.ok, true);
+    assert.equal(calls.length, 3, 'deve tentar os 3 alvos mesmo se um falhar');
+    assert.equal(r.resultados[0].erro, 'arquivo em uso');
+    assert.equal(r.resultados[1].exitCode, 0);
+  } finally {
+    globalThis.Neutralino = original;
+  }
+});
+
+test('update: aplicarAtualizacao invalida cache do WebView2 ANTES do restartProcess', async () => {
+  const original = globalThis.Neutralino;
+  const ordem = [];
+  globalThis.Neutralino = {
+    os: {
+      getEnv: async (k) => k === 'LOCALAPPDATA' ? 'C:\\Users\\fake\\AppData\\Local' : (k === 'APPDATA' ? 'C:\\Users\\fake\\AppData\\Roaming' : null),
+      execCommand: async (cmd) => {
+        if (cmd.startsWith('cmd.exe /c move /Y')) {
+          ordem.push('move');
+          return { exitCode: 0, stdOut: '', stdErr: '' };
+        }
+        if (cmd.startsWith('cmd.exe /c rd /S /Q')) {
+          // guarda so' o pedaco relevante: tudo entre as aspas
+          const m = cmd.match(/"([^"]+)"/);
+          ordem.push('rd:' + (m ? m[1] : '?'));
+          return { exitCode: 0, stdOut: '', stdErr: '' };
+        }
+        return { exitCode: 0, stdOut: '', stdErr: '' };
+      },
+    },
+    filesystem: {
+      getStats: async (p) => ({ size: 5 * 1024 * 1024 }),
+    },
+    app: {
+      restartProcess: async () => { ordem.push('restart'); },
+    },
+  };
+  try {
+    const r = await aplicarAtualizacao('C:\\Users\\fake\\AppData\\Local\\Programs\\MLopes Finance\\resources.neu.tmp');
+    assert.equal(r.ok, true);
+    assert.equal(r.reiniciado, true);
+    // move vem primeiro, depois 3 rd (cache), depois restart
+    assert.deepEqual(ordem, [
+      'move',
+      'rd:C:\\Users\\fake\\AppData\\Roaming\\MLopesFinance.exe\\EBWebView\\Cache\\Cache_Data',
+      'rd:C:\\Users\\fake\\AppData\\Roaming\\MLopesFinance.exe\\EBWebView\\Code Cache',
+      'rd:C:\\Users\\fake\\AppData\\Roaming\\MLopesFinance.exe\\EBWebView\\GPUCache',
+      'restart',
+    ], 'ordem deve ser move -> 3*rd -> restart, foi: ' + JSON.stringify(ordem));
+  } finally {
+    globalThis.Neutralino = original;
+  }
+});
+
+test('update: aplicarAtualizacao segue para restart mesmo se invalidarCacheWebView2 falhar', async () => {
+  const original = globalThis.Neutralino;
+  let restartChamado = false;
+  globalThis.Neutralino = {
+    os: {
+      getEnv: async (k) => k === 'LOCALAPPDATA' ? 'C:\\Users\\fake\\AppData\\Local' : (k === 'APPDATA' ? null : null),
+      execCommand: async (cmd) => {
+        if (cmd.startsWith('cmd.exe /c move /Y')) return { exitCode: 0, stdOut: '', stdErr: '' };
+        if (cmd.startsWith('cmd.exe /c rd /S /Q')) throw new Error('rd falhou');
+        return { exitCode: 0, stdOut: '', stdErr: '' };
+      },
+    },
+    filesystem: {
+      getStats: async (p) => ({ size: 5 * 1024 * 1024 }),
+    },
+    app: {
+      restartProcess: async () => { restartChamado = true; },
+    },
+  };
+  try {
+    const r = await aplicarAtualizacao('C:\\fake\\resources.neu.tmp');
+    assert.equal(r.ok, true, 'update deve ter sucesso mesmo com falha no rd');
+    assert.equal(restartChamado, true, 'restartProcess deve ser chamado mesmo se rd falhar');
+  } finally {
+    globalThis.Neutralino = original;
+  }
 });

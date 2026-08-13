@@ -11,6 +11,10 @@
 //   - Neutralino.app.restartProcess() no fim
 //   - BACKUP do banco antes de aplicar
 //   - SEM suporte a GH_TOKEN / gh CLI (cliente final nao tem)
+//   - INVALIDAR cache do WebView2 antes do restartProcess (senao o app
+//     continua mostrando a versao antiga: o Chromium serve o app.js do
+//     cache HTTP em %APPDATA%\\<binaryName>.exe\\EBWebView, e o restart
+//     nao limpa isso. Sem invalidar, loop eterno de "tem atualizacao").
 
 import { compararVersao, escolherAsset, renderizarMarkdownSimples } from './core/update.js';
 
@@ -36,6 +40,49 @@ async function pathTempInstaladorAsync() {
 }
 async function pathRecursoInstaladoAsync() {
   return `${await getAppDir()}\\resources.neu`;
+}
+
+// Cache persistente do WebView2 do app. No Windows, o WebView2 cria uma
+// pasta `<binaryName>.exe\\EBWebView` em %APPDATA% (padrao Chromium). Esse
+// cache guarda o app.js, index.html, css etc. servidos pelo Neutralino via
+// HTTP localhost. O `Neutralino.app.restartProcess()` reinicia o binario
+// mas NAO invalida esse cache: a proxima execucao continua lendo o app.js
+// antigo do disco. Resultado: o app mostra a versao anterior mesmo apos
+// a substituicao do resources.neu. O `binaryName` vem de neutralino.config.json
+// (`cli.binaryName = 'MLopesFinance'`) -> pasta `%APPDATA%\\MLopesFinance.exe\\EBWebView`.
+export async function pathCacheWebView2Async() {
+  if (!globalThis.Neutralino) throw new Error('Neutralino nao disponivel');
+  const appdata = await Neutralino.os.getEnv('APPDATA');
+  if (!appdata) throw new Error('Variavel APPDATA nao disponivel no ambiente.');
+  return `${appdata}\\MLopesFinance.exe\\EBWebView`;
+}
+
+// Limpa o cache HTTP e o code cache do WebView2 do app. Roda `rd /S /Q`
+// em cmd.exe (forma portavel no Windows, mesma restricao do move /Y:
+// cmd.exe nao expande %APPDATA%, por isso a chamada passa o path completo
+// ja resolvido via `Neutralino.os.getEnv('APPDATA')`).
+// Falhas sao toleradas: se o WebView2 estiver com arquivos abertos
+// (esperado em algumas sessoes), o restartProcess fecha os handles e a
+// proxima execucao parte de um cache zerado. O update NAO depende
+// disso para ter sucesso: o move /Y ja' substituiu o bundle em disco.
+export async function invalidarCacheWebView2() {
+  if (!globalThis.Neutralino) return { ok: false, motivo: 'sem-neutralino' };
+  const root = await pathCacheWebView2Async();
+  const alvos = [
+    `${root}\\Cache\\Cache_Data`, // cache HTTP (app.js, index.html, css)
+    `${root}\\Code Cache`,        // cache V8 bytecode
+    `${root}\\GPUCache`,          // cache GPU
+  ];
+  const resultados = [];
+  for (const alvo of alvos) {
+    try {
+      const r = await Neutralino.os.execCommand(`cmd.exe /c rd /S /Q "${alvo}"`, { background: false });
+      resultados.push({ alvo, exitCode: r.exitCode });
+    } catch (e) {
+      resultados.push({ alvo, erro: e.message });
+    }
+  }
+  return { ok: true, root, resultados };
 }
 
 // Wrappers sincronos (pathTempInstalador/pathRecursoInstalado) para o caso
@@ -171,6 +218,15 @@ export async function aplicarAtualizacao(caminho = null) {
   if (mv.exitCode !== 0) {
     throw new Error(`move /Y falhou (exit ${mv.exitCode}): ${(mv.stdErr || '').trim()}`);
   }
+  // Invalida o cache do WebView2 ANTES do restartProcess. Sem isso, o
+  // Chromium serve o app.js antigo do cache HTTP em
+  // %APPDATA%\\MLopesFinance.exe\\EBWebView\\Cache\\Cache_Data e o app
+  // continua mostrando a versao anterior (loop de "tem atualizacao").
+  // Falhas aqui NAO bloqueiam o restart: o `invalidarCacheWebView2()`
+  // ja e' tolerante a erros por design.
+  try {
+    await invalidarCacheWebView2();
+  } catch { /* nao-bloqueante: melhor reiniciar com cache velho do que nao reiniciar */ }
   // Reinicia o app para carregar o novo bundle.
   try {
     await Neutralino.app.restartProcess();
