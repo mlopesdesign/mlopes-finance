@@ -1,5 +1,5 @@
 import { criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto, atualizarConta, atualizarCategoria, excluirContexto, excluirConta, excluirCategoria } from './core/financeiro.js';
-import { conciliarLancamento, criarLancamento, resumo, excluirLancamento, estornarLancamento, editarLancamento, listarLancamentos, obterLancamento } from './core/lancamentos.js';
+import { conciliarLancamento, criarLancamento, resumo, excluirLancamento, estornarLancamento, editarLancamento, listarLancamentos, listarLancamentosDetalhados, obterLancamento } from './core/lancamentos.js';
 import { getAllConfig, getConfig, setConfig, deleteConfig, resetConfig } from './core/configuracoes.js';
 import { criarBackup, radiografar, restaurarBackup, validarCiclo, resetarBanco } from './core/backup.js';
 import { criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento, excluirCliente, excluirFornecedor, excluirProjeto, excluirCentroCusto, excluirTag, desvincularTagLancamento } from './core/cadastros.js';
@@ -30,7 +30,7 @@ export function criarApi(db, persistir = () => {}) {
     'categorias:criar': (d) => { const id = criarCategoria(db, d); persistir(); return id; },
     'categorias:atualizar': (d) => { atualizarCategoria(db, d); persistir(); return true; },
     'categorias:excluir': (d) => { const r = excluirCategoria(db, d.id, { cascade: d.cascade === true }); persistir(); return r; },
-    'lancamentos:listar': (d) => listarLancamentos(db, d.contextoId, { incluirEstornados: d.incluirEstornados === true, limite: d.limite ?? 500 }),
+    'lancamentos:listar': (d) => listarLancamentosDetalhados(db, d.contextoId, { incluirEstornados: d.incluirEstornados === true, limite: d.limite ?? 500 }),
     'lancamentos:obter': (d) => obterLancamento(db, d.id),
     'lancamentos:criar': (d) => { const id = criarLancamento(db, d); persistir(); return id; },
     'lancamentos:conciliar': (d) => { const out = conciliarLancamento(db, d.id); persistir(); return out; },

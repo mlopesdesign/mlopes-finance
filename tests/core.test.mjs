@@ -22,7 +22,7 @@ import { excluirContexto, excluirConta, excluirCategoria } from '../src/js/backe
 import { excluirCliente, excluirFornecedor, excluirProjeto, excluirCentroCusto, excluirTag, desvincularTagLancamento } from '../src/js/backend/core/cadastros.js';
 import { excluirRecorrencia, desativarRecorrencia } from '../src/js/backend/core/recorrencias.js';
 import { excluirTransferencia } from '../src/js/backend/core/transferencias.js';
-import { excluirLancamento, estornarLancamento, editarLancamento, listarLancamentos, obterLancamento } from '../src/js/backend/core/lancamentos.js';
+import { excluirLancamento, estornarLancamento, editarLancamento, listarLancamentos, listarLancamentosDetalhados, obterLancamento } from '../src/js/backend/core/lancamentos.js';
 import { resetarBanco } from '../src/js/backend/core/backup.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -1267,4 +1267,45 @@ test('resetarBanco: e idempotente (rodar 2x da certo)', async () => {
   assert.equal(r2.ok, true);
   // Continua so com 1 contexto (Pessoal)
   assert.equal(Number(db.exec('SELECT COUNT(*) FROM contextos_financeiros')[0].values[0][0]), 1);
+});
+
+// --- listarLancamentosDetalhados (v0.8.16) ---
+// Bug historico: v0.8.15 trocou a query com JOINs por SELECT * e a UI renderLancamentos
+// quebrou (esperava 22 colunas, recebia 17). v0.8.16 reintroduz os JOINs.
+test('listarLancamentosDetalhados: retorna 22 colunas (17 lanc + 5 nomes)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Banco' });
+  const catId = criarCategoria(db, { contextoId: cid, nome: 'Salario', natureza: 'receita' });
+  const clienteId = criarCliente(db, { contextoId: cid, nome: 'Cli' });
+  const projetoId = criarProjeto(db, { contextoId: cid, nome: 'Proj' });
+  const ccId = criarCentroCusto(db, { contextoId: cid, nome: 'CC' });
+  const lid = criarLancamento(db, { contextoId: cid, contaId, categoriaId: catId, clienteId, projetoId, centroCustoId: ccId, natureza: 'receita', valorCentavos: 1000, dataCompetencia: '2026-08-01', descricao: 'Test' });
+  const r = listarLancamentosDetalhados(db, cid);
+  assert.equal(r.length, 1, '1 lancamento retornado');
+  const row = r[0];
+  assert.equal(row.length, 22, 'deve ter 22 colunas (17 de lancamentos + 5 JOINs)');
+  // Conferir colunas de join
+  assert.equal(row[17], 'Banco', 'conta_nome na col 17');
+  assert.equal(row[18], 'Salario', 'categoria_nome na col 18');
+  assert.equal(row[19], 'Cli', 'cliente_nome na col 19');
+  assert.equal(row[20], 'Proj', 'projeto_nome na col 20');
+  assert.equal(row[21], 'CC', 'centro_custo_nome na col 21');
+  // Conferir colunas de lancamentos
+  assert.equal(row[0], lid, 'id na col 0');
+  assert.equal(row[7], 'receita', 'natureza na col 7');
+  assert.equal(row[8], 1000, 'valor_centavos na col 8');
+  assert.equal(row[11], 'Test', 'descricao na col 11');
+  assert.equal(row[14], 'aberto', 'status na col 14');
+});
+
+test('listarLancamentosDetalhados: exclui transferencias e estornados por padrao', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const c1 = criarConta(db, { contextoId: cid, nome: 'O' });
+  const c2 = criarConta(db, { contextoId: cid, nome: 'D' });
+  const t = criarTransferencia(db, { contextoId: cid, contaOrigemId: c1, contaDestinoId: c2, valorCentavos: 100, dataCompetencia: '2026-08-01' });
+  const r = listarLancamentosDetalhados(db, cid);
+  // Os 2 lancamentos da transferencia (saida + entrada) nao devem aparecer
+  assert.equal(r.length, 0, 'transferencias nao aparecem em listarLancamentosDetalhados');
 });

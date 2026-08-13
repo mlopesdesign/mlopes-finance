@@ -9,7 +9,7 @@ import { renderRelatorios } from './telas/relatorios.js';
 import { renderContextos } from './telas/contextos.js';
 import * as updUI from './update.js';
 
-const APP_VERSION = '0.8.15';
+const APP_VERSION = '0.8.16';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = []; let appDbPath = '';
 const $ = (s) => document.querySelector(s); const app = $('#app');
@@ -247,13 +247,34 @@ function renderDashboard() {
 
 function renderContas() {
   contas = api('contas:listar', { contextoId });
-  const linhas = contas.length ? contas.map((r) => `<tr><td>${r[2] || ''}</td><td>${r[3] || ''}</td><td>${money(r[4] || 0)}</td><td><button class="button ghost" data-edit="${r[0]}">Editar</button></td></tr>`).join('') : '';
+  const linhas = contas.length ? contas.map((r) => {
+    const nome = String(r[2] || '').replace(/[<>&"']/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;' }[c]));
+    return `<tr><td>${nome}</td><td>${r[3] || ''}</td><td>${money(r[4] || 0)}</td><td><button class="button ghost" data-edit="${r[0]}">Editar</button> <button class="button danger" data-excluir="${r[0]}" data-nome="${nome}">Excluir</button></td></tr>`;
+  }).join('') : '';
   app.innerHTML = `<div class="toolbar"><div><h1>Contas</h1><p class="subtitle">Contas bancárias, cartões e investimentos.</p></div><button class="button" id="new">Nova conta</button></div><div class="panel"><table><thead><tr><th>Nome</th><th>Tipo</th><th>Saldo inicial</th><th></th></tr></thead><tbody>${linhas}</tbody></table>${!contas.length ? '<div class="empty"><div class="icon">◌</div>Nenhuma conta cadastrada.</div>' : ''}</div>`;
   $('#new').onclick = () => formConta();
   document.querySelectorAll('button[data-edit]').forEach(btn => btn.onclick = () => {
     const id = Number(btn.dataset.edit);
     const conta = contas.find(c => c[0] === id);
     formConta(conta);
+  });
+  document.querySelectorAll('button[data-excluir]').forEach(btn => btn.onclick = () => {
+    const id = Number(btn.dataset.excluir);
+    const nome = btn.dataset.nome;
+    if (!confirm(`Excluir a conta "${nome}"?\n\nSe houver lançamentos vinculados, será necessário confirmar o cascade (apaga também os lançamentos e baixas).`)) return;
+    try {
+      api('contas:excluir', { id });
+      if (globalThis.toastOk) toastOk(`Conta "${nome}" excluída.`);
+      renderContas();
+    } catch (e) {
+      if (confirm(`${e.message}\n\nApagar TUDO em cascata (lançamentos e baixas vinculados)? Esta ação é IRREVERSÍVEL.`)) {
+        try {
+          api('contas:excluir', { id, cascade: true });
+          if (globalThis.toastOk) toastOk(`Conta "${nome}" e dados vinculados excluídos.`);
+          renderContas();
+        } catch (e2) { if (globalThis.toastErr) toastErr('Erro: ' + e2.message); }
+      }
+    }
   });
 }
 
@@ -279,13 +300,34 @@ function formConta(item) {
 
 function renderCategorias() {
   categorias = api('categorias:listar', { contextoId });
-  const linhas = categorias.length ? categorias.map((r) => `<tr><td>${r[2] || ''}</td><td>${r[3] || ''}</td><td><button class="button ghost" data-edit="${r[0]}">Editar</button></td></tr>`).join('') : '';
+  const linhas = categorias.length ? categorias.map((r) => {
+    const nome = String(r[2] || '').replace(/[<>&"']/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;' }[c]));
+    return `<tr><td>${nome}</td><td>${r[3] || ''}</td><td><button class="button ghost" data-edit="${r[0]}">Editar</button> <button class="button danger" data-excluir="${r[0]}" data-nome="${nome}">Excluir</button></td></tr>`;
+  }).join('') : '';
   app.innerHTML = `<div class="toolbar"><div><h1>Categorias</h1><p class="subtitle">Classificação editável para este contexto.</p></div><button class="button" id="new">Nova categoria</button></div><div class="panel"><table><thead><tr><th>Nome</th><th>Natureza</th><th></th></tr></thead><tbody>${linhas}</tbody></table>${!categorias.length ? '<div class="empty"><div class="icon">◌</div>Nenhuma categoria cadastrada.</div>' : ''}</div>`;
   $('#new').onclick = () => formCategoria();
   document.querySelectorAll('button[data-edit]').forEach(btn => btn.onclick = () => {
     const id = Number(btn.dataset.edit);
     const cat = categorias.find(c => c[0] === id);
     formCategoria(cat);
+  });
+  document.querySelectorAll('button[data-excluir]').forEach(btn => btn.onclick = () => {
+    const id = Number(btn.dataset.excluir);
+    const nome = btn.dataset.nome;
+    if (!confirm(`Excluir a categoria "${nome}"?\n\nSe houver lançamentos vinculados, será necessário confirmar o cascade (apaga também os lançamentos).`)) return;
+    try {
+      api('categorias:excluir', { id });
+      if (globalThis.toastOk) toastOk(`Categoria "${nome}" excluída.`);
+      renderCategorias();
+    } catch (e) {
+      if (confirm(`${e.message}\n\nApagar TUDO em cascata (lançamentos vinculados)? Esta ação é IRREVERSÍVEL.`)) {
+        try {
+          api('categorias:excluir', { id, cascade: true });
+          if (globalThis.toastOk) toastOk(`Categoria "${nome}" e lançamentos vinculados foram excluídos.`);
+          renderCategorias();
+        } catch (e2) { if (globalThis.toastErr) toastErr('Erro: ' + e2.message); }
+      }
+    }
   });
 }
 
@@ -315,15 +357,125 @@ function renderLancamentos() {
   const projetos = api('projetos:listar', { contextoId });
   const centrosCusto = api('centros_custo:listar', { contextoId });
   const data = api('lancamentos:listar', { contextoId });
-  app.innerHTML = `<div class="toolbar"><div><h1>Lançamentos</h1><p class="subtitle">Receitas, despesas e transferências com rastreabilidade.</p></div><div style="display:flex;gap:8px"><button class="button secondary" id="transf">Transferir entre contas</button><button class="button" id="new">Novo lançamento</button></div></div><div class="panel"><table><thead><tr><th>Data</th><th>Descrição</th><th>Conta</th><th>Categoria</th><th>Cliente</th><th>Natureza</th><th>Valor</th><th>Status</th><th>Saldo</th></tr></thead><tbody>${data.map((r) => { const lId = r[0]; const saldo = api('baixas:saldo', { lancamentoId: lId }); return `<tr><td>${r[11] || ''}</td><td>${r[13] || ''}</td><td>${r[19] || ''}</td><td>${r[21] || ''}</td><td>${r[23] || ''}</td><td>${tdNatureza(r[10])}</td><td class="${r[10] === 'receita' ? 'positive' : 'negative'}">${money(r[12])}</td><td>${r[16] || 'aberto'}</td><td><button class="button ghost" data-baixa="${lId}">${money(saldo)}</button></td></tr>`; }).join('')}</tbody></table>${!data.length ? '<div class="empty"><div class="icon">◌</div>Nenhum lançamento cadastrado.</div>' : ''}</div>`;
+  // Schema detalhado: 0=id 1=contexto 2=conta 3=categoria 4=cliente 5=projeto 6=cc
+  //   7=natureza 8=valor 9=data_comp 10=data_venc 11=desc 12=obs
+  //   13=transf_id 14=status 15=criado 16=atualizado
+  //   17=conta_nome 18=categoria_nome 19=cliente_nome 20=projeto_nome 21=cc_nome
+  const linhas = data.map((r) => {
+    const lId = r[0];
+    const status = r[14] || 'aberto';
+    const natureza = r[7];
+    const valor = r[8];
+    const dataComp = r[9] || '';
+    const descricao = String(r[11] || '').replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c]));
+    const contaNome = r[17] || '—';
+    const catNome = r[18] || '';
+    const cliNome = r[19] || '';
+    const projNome = r[20] || '';
+    let acoes = `<button class="button ghost" data-baixa="${lId}" title="Lançar pagamento parcial">${money(api('baixas:saldo', { lancamentoId: lId }))}</button>`;
+    acoes += ` <button class="button ghost" data-editar="${lId}" title="Editar lançamento">Editar</button>`;
+    if (status === 'conciliado') {
+      acoes += ` <button class="button ghost" data-estornar="${lId}" title="Estornar (cria lançamento inverso)">Estornar</button>`;
+    } else if (status === 'aberto') {
+      acoes += ` <button class="button ghost" data-conciliar="${lId}" title="Marcar como pago">Conciliar</button>`;
+      acoes += ` <button class="button danger" data-excluir="${lId}" title="Excluir lançamento">Excluir</button>`;
+    }
+    const statusPill = status === 'conciliado' ? '<span class="pill is-static" style="color:var(--positive)">Conciliado</span>' : '<span class="pill warn">Aberto</span>';
+    return `<tr>
+      <td>${dataComp}</td>
+      <td><strong>${descricao}</strong></td>
+      <td>${contaNome}</td>
+      <td>${catNome}</td>
+      <td>${cliNome}${projNome ? ` <span style="color:var(--muted);font-size:11px">/ ${projNome}</span>` : ''}</td>
+      <td>${tdNatureza(natureza)}</td>
+      <td class="${natureza === 'receita' ? 'positive' : 'negative'}">${money(valor)}</td>
+      <td>${statusPill}</td>
+      <td>${acoes}</td>
+    </tr>`;
+  }).join('');
+  app.innerHTML = `<div class="toolbar"><div><h1>Lançamentos</h1><p class="subtitle">Receitas e despesas com rastreabilidade. Conciliados não podem ser editados nem excluídos — use estornar (cria lançamento inverso).</p></div><div style="display:flex;gap:8px"><button class="button secondary" id="transf">Transferir entre contas</button><button class="button" id="new">Novo lançamento</button></div></div><div class="panel"><table><thead><tr><th>Data</th><th>Descrição</th><th>Conta</th><th>Categoria</th><th>Cliente / Projeto</th><th>Natureza</th><th>Valor</th><th>Status</th><th>Ações</th></tr></thead><tbody>${linhas}</tbody></table>${!data.length ? '<div class="empty"><div class="icon">◌</div>Nenhum lançamento cadastrado.</div>' : ''}</div>`;
   $('#new').onclick = () => formLancamento(clientes, projetos, centrosCusto);
   $('#transf').onclick = formTransferencia;
-  document.querySelectorAll('button[data-baixa]').forEach(btn => btn.onclick = () => {
-    const lId = Number(btn.dataset.baixa);
-    formBaixa(lId);
-  });
+  // Handlers
+  document.querySelectorAll('button[data-baixa]').forEach(btn => btn.onclick = () => formBaixa(Number(btn.dataset.baixa)));
+  document.querySelectorAll('button[data-editar]').forEach(btn => btn.onclick = () => formEditarLancamento(Number(btn.dataset.editar), clientes, projetos, centrosCusto));
+  document.querySelectorAll('button[data-conciliar]').forEach(btn => btn.onclick = () => acaoLancamento(Number(btn.dataset.conciliar), 'conciliar', renderLancamentos));
+  document.querySelectorAll('button[data-excluir]').forEach(btn => btn.onclick = () => acaoLancamento(Number(btn.dataset.excluir), 'excluir', renderLancamentos));
+  document.querySelectorAll('button[data-estornar]').forEach(btn => btn.onclick = () => acaoLancamento(Number(btn.dataset.estornar), 'estornar', renderLancamentos));
 }
 function tdNatureza(n) { return n === 'receita' ? 'Receita' : n === 'despesa' ? 'Despesa' : 'Transferência'; }
+
+function acaoLancamento(id, acao, refresh) {
+  const mapa = {
+    conciliar: { canal: 'lancamentos:conciliar', confirma: null, ok: 'Lançamento conciliado.' },
+    excluir:   { canal: 'lancamentos:excluir',   confirma: 'Excluir este lançamento? (só é permitido se não estiver conciliado)', ok: 'Lançamento excluído.' },
+    estornar:  { canal: 'lancamentos:estornar',  confirma: 'Estornar este lançamento? Será criado um lançamento inverso (receita ↔ despesa, mesmo valor) e o original será marcado como estornado.', ok: 'Estorno criado.' },
+  };
+  const m = mapa[acao];
+  if (!m) return;
+  if (m.confirma && !confirm(m.confirma)) return;
+  try {
+    const out = api(m.canal, { id });
+    if (globalThis.toastOk) toastOk(m.ok);
+    if (acao === 'estornar' && out && out.idEstorno) {
+      if (globalThis.toastInfo) toastInfo(`Lançamento inverso #${out.idEstorno} criado.`);
+    }
+    refresh();
+  } catch (err) {
+    if (globalThis.toastErr) toastErr('Erro: ' + err.message);
+  }
+}
+
+function formEditarLancamento(id, clientes, projetos, centrosCusto) {
+  const r = api('lancamentos:obter', { id });
+  if (!r) { if (globalThis.toastErr) toastErr('Lançamento não encontrado.'); return; }
+  // r: 0=id 1=contexto 2=conta 3=categoria 4=cliente 5=projeto 6=cc 7=natureza
+  //    8=valor 9=data_comp 10=data_venc 11=desc 12=obs 13=transf 14=status ...
+  if (r[14] === 'conciliado') { if (globalThis.toastErr) toastErr('Conciliado não pode ser editado. Use estornar.'); return; }
+  if (r[14] === 'estornado') { if (globalThis.toastErr) toastErr('Estornado não pode ser editado.'); return; }
+  const dataComp = r[9] || '';
+  const valor = (Number(r[8]) / 100).toFixed(2).replace('.', ',');
+  const natureza = r[7];
+  const contaId = r[2];
+  const catId = r[3];
+  const cliId = r[4];
+  const projId = r[5];
+  const ccId = r[6];
+  app.innerHTML = `<div class="panel"><h1>Editar lançamento #${id}</h1><form id="form"><div class="form-grid">
+    <label>Descrição<input name="descricao" required value="${String(r[11] || '').replaceAll('"','&quot;')}"></label>
+    <label>Natureza<select name="natureza"><option value="despesa" ${natureza === 'despesa' ? 'selected' : ''}>Despesa</option><option value="receita" ${natureza === 'receita' ? 'selected' : ''}>Receita</option></select></label>
+    <label>Valor (R$)<input name="valor" inputmode="decimal" required value="${valor}"></label>
+    <label>Data<input type="date" name="data" required value="${dataComp}"></label>
+    <label>Conta<select name="conta">${contas.map((c) => `<option value="${c[0]}" ${c[0] === contaId ? 'selected' : ''}>${String(c[2] || '').replace(/[<>&]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;' }[c]))}</option>`).join('')}</select></label>
+    <label>Categoria<select name="categoria"><option value="">Sem categoria</option>${categorias.map((c) => `<option value="${c[0]}" ${c[0] === catId ? 'selected' : ''}>${String(c[2] || '').replace(/[<>&]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;' }[c]))}</option>`).join('')}</select></label>
+    <label>Cliente<select name="cliente"><option value="">Sem cliente</option>${clientes.map((c) => `<option value="${c[0]}" ${c[0] === cliId ? 'selected' : ''}>${String(c[2] || '').replace(/[<>&]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;' }[c]))}</option>`).join('')}</select></label>
+    <label>Projeto<select name="projeto"><option value="">Sem projeto</option>${projetos.map((c) => `<option value="${c[0]}" ${c[0] === projId ? 'selected' : ''}>${String(c[2] || '').replace(/[<>&]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;' }[c]))}</option>`).join('')}</select></label>
+    <label>Centro de custo<select name="centro_custo"><option value="">Sem centro</option>${centrosCusto.map((c) => `<option value="${c[0]}" ${c[0] === ccId ? 'selected' : ''}>${String(c[2] || '').replace(/[<>&]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;' }[c]))}</option>`).join('')}</select></label>
+  </div><div class="form-actions"><button type="button" class="button secondary" id="cancel">Cancelar</button><button class="button">Salvar</button></div></form></div>`;
+  $('#cancel').onclick = renderLancamentos;
+  $('#form').onsubmit = (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const campos = {
+      contaId: Number(f.get('conta')),
+      categoriaId: f.get('categoria') ? Number(f.get('categoria')) : null,
+      clienteId: f.get('cliente') ? Number(f.get('cliente')) : null,
+      projetoId: f.get('projeto') ? Number(f.get('projeto')) : null,
+      centroCustoId: f.get('centro_custo') ? Number(f.get('centro_custo')) : null,
+      natureza: f.get('natureza'),
+      valor_centavos: Math.round(Number(String(f.get('valor')).replace(',', '.')) * 100),
+      data_competencia: f.get('data'),
+      descricao: f.get('descricao'),
+    };
+    try {
+      api('lancamentos:editar', { id, campos });
+      if (globalThis.toastOk) toastOk('Lançamento atualizado.');
+      renderLancamentos();
+    } catch (err) {
+      if (globalThis.toastErr) toastErr('Erro: ' + err.message);
+    }
+  };
+}
 
 function formLancamento(clientes, projetos, centrosCusto) {
   if (!contas.length) { app.innerHTML = '<div class="error">Cadastre uma conta antes de registrar lançamentos.</div>'; return; }
@@ -349,12 +501,39 @@ function formBaixa(lancamentoId) {
 
 function renderTransferencias() {
   const transfs = api('transferencias:listar', { contextoId });
-  app.innerHTML = `<span class="eyebrow">CADASTROS</span><h1>Transferências</h1><p class="subtitle">Débitos e créditos vinculados entre contas do mesmo contexto.</p><div class="panel"><table><thead><tr><th>Data</th><th>Conta origem</th><th>Conta destino</th><th>Valor</th></tr></thead><tbody>${transfs.map((t) => `<tr><td>${t[5]}</td><td>${t[6] || ''}</td><td>${t[7] || ''}</td><td>${money(t[4])}</td></tr>`).join('')}</tbody></table>${!transfs.length ? '<div class="empty"><div class="icon">◌</div>Nenhuma transferência. Cadastre via tela de Lançamentos.</div>' : ''}</div>`;
+  // Schema: 0=id 1=contexto 2=lanc_origem 3=lanc_destino 4=valor 5=data
+  //   6=criado_em 7=conta_origem_nome 8=conta_destino_nome
+  const linhas = transfs.map((t) => {
+    const data = t[5] || '';
+    const origem = t[7] || '—';
+    const destino = t[8] || '—';
+    const valor = t[4];
+    return `<tr><td>${data}</td><td>${origem}</td><td>${destino}</td><td>${money(valor)}</td><td><button class="button danger" data-excluir="${t[0]}">Excluir</button></td></tr>`;
+  }).join('');
+  app.innerHTML = `<span class="eyebrow">CADASTROS</span><h1>Transferências</h1><p class="subtitle">Débitos e créditos vinculados entre contas do mesmo contexto. Excluir apenas desvincula os 2 lançamentos (eles permanecem). Use cascade se quiser apagar também.</p><div class="panel"><table><thead><tr><th>Data</th><th>Conta origem</th><th>Conta destino</th><th>Valor</th><th>Ação</th></tr></thead><tbody>${linhas}</tbody></table>${!transfs.length ? '<div class="empty"><div class="icon">◌</div>Nenhuma transferência. Cadastre via tela de Lançamentos > "Transferir entre contas".</div>' : ''}</div>`;
+  document.querySelectorAll('button[data-excluir]').forEach(btn => btn.onclick = () => {
+    const id = Number(btn.dataset.excluir);
+    if (!confirm('Excluir esta transferência?\n\nPor padrão, apenas desvincula os 2 lançamentos (eles continuam existindo como lançamentos independentes). Clique OK e confirme o cascade para apagar TUDO.')) return;
+    try {
+      api('transferencias:excluir', { id });
+      if (globalThis.toastOk) toastOk('Transferência desvinculada (lançamentos preservados).');
+      renderTransferencias();
+    } catch (e) {
+      if (confirm(`${e.message}\n\nApagar TUDO em cascata (lançamentos + baixas)? Esta ação é IRREVERSÍVEL.`)) {
+        try {
+          api('transferencias:excluir', { id, cascade: true });
+          if (globalThis.toastOk) toastOk('Transferência e lançamentos apagados.');
+          renderTransferencias();
+        } catch (e2) { if (globalThis.toastErr) toastErr('Erro: ' + e2.message); }
+      }
+    }
+  });
 }
 
 function renderBaixas() {
-  const data = api('lancamentos:listar', { contextoId }).filter((l) => l[16] !== 'estornado' && (l[8] === 'despesa' || l[8] === 'receita'));
-  app.innerHTML = `<span class="eyebrow">FINANCEIRO</span><h1>Baixas e saldos em aberto</h1><p class="subtitle">Pagamentos parciais e totais. Não excede o valor original.</p><div class="panel"><table><thead><tr><th>Lançamento</th><th>Vencimento</th><th>Valor original</th><th>Saldo em aberto</th><th>Status</th><th>Ação</th></tr></thead><tbody>${data.map((l) => { const id = l[0]; const saldo = api('baixas:saldo', { lancamentoId: id }); return `<tr><td>${l[7]}</td><td>${l[9] || l[11] || ''}</td><td>${money(l[6])}</td><td>${money(saldo)}</td><td>${l[15] || 'aberto'}</td><td><button class="button ghost" data-baixa="${id}">Lançar baixa</button></td></tr>`; }).join('')}</tbody></table></div>`;
+  const data = api('lancamentos:listar', { contextoId });
+  // Schema detalhado: 0=id 7=natureza 8=valor 9=data_competencia 11=desc 14=status
+  app.innerHTML = `<span class="eyebrow">FINANCEIRO</span><h1>Baixas e saldos em aberto</h1><p class="subtitle">Pagamentos parciais e totais. Não excede o valor original.</p><div class="panel"><table><thead><tr><th>Lançamento</th><th>Vencimento</th><th>Valor original</th><th>Saldo em aberto</th><th>Status</th><th>Ação</th></tr></thead><tbody>${data.map((l) => { const id = l[0]; const saldo = api('baixas:saldo', { lancamentoId: id }); const desc = String(l[11] || '').replace(/[<>&"']/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;' }[c])); return `<tr><td>${desc}</td><td>${l[9] || ''}</td><td>${money(l[8])}</td><td>${money(saldo)}</td><td>${l[14] || 'aberto'}</td><td><button class="button ghost" data-baixa="${id}">Lançar baixa</button></td></tr>`; }).join('')}</tbody></table>${!data.length ? '<div class="empty"><div class="icon">◌</div>Nenhum lançamento para dar baixa.</div>' : ''}</div>`;
   document.querySelectorAll('button[data-baixa]').forEach(btn => btn.onclick = () => formBaixa(Number(btn.dataset.baixa)));
 }
 

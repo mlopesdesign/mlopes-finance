@@ -20,7 +20,7 @@ const MAPA = {
     { nome: 'dataInicio', label: 'Data inicio (YYYY-MM-DD)', tipo: 'texto' },
     { nome: 'dataFim', label: 'Data fim (YYYY-MM-DD)', tipo: 'texto' },
   ]},
-  centros_custo: { titulo: 'Centros de custo', apiListar: 'centros_custo:listar', apiCriar: 'centos_custo:criar', apiExcluir: 'centros_custo:excluir', campos: [
+  centros_custo: { titulo: 'Centros de custo', apiListar: 'centros_custo:listar', apiCriar: 'centros_custo:criar', apiExcluir: 'centros_custo:excluir', campos: [
     { nome: 'nome', label: 'Nome', tipo: 'texto', required: true },
     { nome: 'descricao', label: 'Descricao', tipo: 'texto' },
   ]},

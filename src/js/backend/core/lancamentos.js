@@ -151,6 +151,43 @@ export function listarLancamentos(db, contextoId, { incluirEstornados = false, l
   )[0]?.values ?? [];
 }
 
+/**
+ * Lista lancamentos COM nomes relacionados (conta, categoria, cliente, projeto, centro de custo)
+ * via LEFT JOIN. Retorna 22 colunas: 17 de `lancamentos` + 5 nomes.
+ * Schema das colunas de retorno:
+ *   0  id | 1  contexto_id | 2  conta_id | 3  categoria_id | 4  cliente_id |
+ *   5  projeto_id | 6  centro_custo_id | 7  natureza | 8  valor_centavos |
+ *   9  data_competencia | 10 data_vencimento | 11 descricao | 12 observacoes |
+ *   13 transferencia_id | 14 status | 15 criado_em | 16 atualizado_em |
+ *   17 conta_nome | 18 categoria_nome | 19 cliente_nome | 20 projeto_nome | 21 centro_custo_nome
+ * Lancamentos de transferencia NAO aparecem (sao "movimentacao interna", nao
+ * receita/despesa do contexto). Sao geridos pela tela de Transferencias.
+ */
+export function listarLancamentosDetalhados(db, contextoId, { incluirEstornados = false, limite = 500 } = {}) {
+  if (!Number.isInteger(contextoId)) return [];
+  const condEstornado = incluirEstornados ? '' : "AND l.status != 'estornado'";
+  return db.exec(
+    `SELECT l.*,
+            COALESCE(c.nome, '')   AS conta_nome,
+            COALESCE(ca.nome, '')  AS categoria_nome,
+            COALESCE(cl.nome, '')  AS cliente_nome,
+            COALESCE(p.nome, '')   AS projeto_nome,
+            COALESCE(cc.nome, '')  AS centro_custo_nome
+     FROM lancamentos l
+     LEFT JOIN contas c        ON c.id  = l.conta_id
+     LEFT JOIN categorias ca   ON ca.id = l.categoria_id
+     LEFT JOIN clientes cl     ON cl.id = l.cliente_id
+     LEFT JOIN projetos p      ON p.id  = l.projeto_id
+     LEFT JOIN centros_custo cc ON cc.id = l.centro_custo_id
+     WHERE l.contexto_id = ? ${condEstornado}
+       AND l.natureza IN ('receita', 'despesa')
+       AND l.transferencia_id IS NULL
+     ORDER BY l.data_competencia DESC, l.id DESC
+     LIMIT ?`,
+    [contextoId, Number(limite)]
+  )[0]?.values ?? [];
+}
+
 export function obterLancamento(db, id) {
   if (!Number.isInteger(id)) return null;
   return db.exec('SELECT * FROM lancamentos WHERE id = ?', [id])[0]?.values?.[0] ?? null;
