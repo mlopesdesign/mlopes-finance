@@ -1,4 +1,26 @@
 
+## 0.8.16 — AUDITORIA: conserta 4 bugs + 4 ligações UI/backend
+
+Auditoria completa do app cruzando backend (86 rotas), servidor e UI (5 telas + 14 entradas na sidebar). Encontrados 4 bugs que QUEBRAM o app e 4 funcionalidades com backend pronto mas sem botão na UI.
+
+**BUGS QUE QUEBRAM O APP** (introduzidos na v0.8.15):
+- `lancamentos:listar` no servidor perdeu os JOINs (eu troquei por `listarLancamentos` que faz `SELECT *`). Tela de Lançamentos mostrava `undefined` em quase todas as colunas. **Fix**: reintroduzida a query com `LEFT JOIN` (conta, categoria, cliente, projeto, centro_custo) em nova função `listarLancamentosDetalhados` em `core/lancamentos.js`. Filtra também `transferencia_id IS NULL` (transferências não aparecem, são geridas pela tela de Transferências).
+- UI `renderLancamentos` usava índices de 22 colunas, recebia 17. **Fix**: índices corrigidos (`r[9]`=data, `r[17]`=conta_nome, `r[18]`=categoria, `r[19]`=cliente, `r[7]`=natureza, `r[8]`=valor, `r[14]`=status).
+- UI `renderBaixas` usava `l[6]` (centro_custo_id) onde devia ser `l[8]` (valor_centavos) e `l[15]` (criado_em) onde devia ser `l[14]` (status). **Fix**: corrigidos.
+- MAPA em `cadastros-generico.js`: `apiCriar: 'centos_custo:criar'` (faltou 'r' — dava 404 ao criar Centro de Custo). **Fix**: corrigido para `'centros_custo:criar'`.
+
+**LIGAÇÕES QUE FALTAVAM** (backend pronto, UI sem botão):
+- `renderContas` → botão "Excluir" com confirmação + cascade.
+- `renderCategorias` → botão "Excluir" com confirmação + cascade.
+- `renderTransferencias` → botão "Excluir" com confirmação + cascade.
+- `renderLancamentos` → botões "Editar" (formEditarLancamento), "Conciliar", "Excluir" (helper `acaoLancamento`). Conciliados mostram só "Estornar" (regra do PADRAO). Estornados não permitem editar. Helper `acaoLancamento` unifica o padrão de confirm+try/catch+toast+refresh.
+
+**2 testes novos** (74/74 verde): `listarLancamentosDetalhados` retorna 22 colunas com nomes corretos nas posições 17-21; exclui transferências por padrão.
+
+**Bump v0.8.15 → v0.8.16** (7 lugares). Bundle v0.8.16 (5.71 MB, SHA `2C79FD9E…B9`) instalado na máquina do Marcio, backup v0.8.15 preservado.
+
+**Pendente pra v0.9.0** (precisa telas novas): Recorrências, Cartões, Faturas, lancamento_tags.
+
 ## 0.8.15 — CRUD completo de exclusão + Resetar banco
 
 - **Motivação do user**: "tenho que poder apagar o que eu quiser, ou quando cometer um erro, ficarei preso ao erro". Diagnóstico: o app só tinha funções de excluir para `importacao`, `baixas` e `configuracoes`. Não dava para apagar contextos, contas, categorias, clientes, fornecedores, projetos, centros de custo, tags, lançamentos, transferências, etc. O usuário cadastrava dados de teste e não tinha como limpar.

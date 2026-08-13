@@ -1,4 +1,4 @@
-﻿import { criarApi } from './backend/servidor.js';
+import { criarApi } from './backend/servidor.js';
 import { migrar } from './backend/migracoes.js';
 import { APP_VERSION as AMBIENTE_VERSION, abrirBancoLocal } from './backend/ambiente.js';
 import { aplicarTemaDoBanco, DEFAULTS as TEMA_DEFAULTS } from './tema.js';
