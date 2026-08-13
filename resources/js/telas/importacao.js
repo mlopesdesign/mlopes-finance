@@ -1,22 +1,56 @@
 // MLopes Finance — Tela de Importação de Extratos (OFX / CSV)
 // Fluxo: selecionar arquivo -> previa -> escolher conta -> confirmar
+// v0.8.8-hotfix2: header explicito "Vai para" + toast em todas as acoes
 
 let _contextoId = null;
 let _api = null;
 let _importacaoAtual = null; // id da importacao em status 'previa'
 let _contasCache = [];
+let _contextoNome = '';
+let _contextoPill = null;
 
 export function renderImportacao(contextoId, api) {
   _contextoId = contextoId;
   _api = api;
   _importacaoAtual = null;
   _contasCache = api('contas:listar', { contextoId });
+  // Pega o nome do contexto ativo
+  try {
+    const ctxs = api('contextos:listar', { incluirInativos: true });
+    const ctx = ctxs.find((c) => c[0] === contextoId);
+    _contextoNome = ctx ? ctx[1] : '—';
+  } catch { _contextoNome = '—'; }
 
   const app = document.getElementById('app');
   app.innerHTML = `
     <span class="eyebrow">FASE 5</span>
     <h1>Importar <em>extrato</em> bancário</h1>
     <p class="subtitle">OFX ou CSV. Detecta duplicidade por data, valor e descrição. Nada é criado até você confirmar.</p>
+
+    <div class="panel" id="imp-destino-panel">
+      <h2>📍 Para onde vão os dados</h2>
+      <div class="field-row">
+        <div>
+          <div class="field-label">Contexto financeiro</div>
+          <div class="field-help">Os lançamentos serão criados dentro deste contexto.</div>
+        </div>
+        <div><span class="pill is-static" id="imp-destino-contexto">${escapeHtml(_contextoNome)}</span></div>
+      </div>
+      <div class="field-row">
+        <div>
+          <div class="field-label">Conta de destino</div>
+          <div class="field-help" id="imp-destino-conta-help">Escolha abaixo, na etapa 3, antes de confirmar.</div>
+        </div>
+        <div><span class="pill is-static" id="imp-destino-conta">— não definida —</span></div>
+      </div>
+      <div class="field-row" id="imp-destino-resumo" style="display:none;">
+        <div>
+          <div class="field-label">Resumo da prévia</div>
+          <div class="field-help" id="imp-destino-resumo-texto">—</div>
+        </div>
+        <div></div>
+      </div>
+    </div>
 
     <div class="panel">
       <h2>1. Selecionar arquivo</h2>
@@ -34,7 +68,7 @@ export function renderImportacao(contextoId, api) {
     </div>
 
     <div class="panel" id="imp-previa-panel" style="display:none;">
-      <h2>2. Prévia</h2>
+      <h2>2. Pré-visualização</h2>
       <p class="field-help" id="imp-previa-resumo"></p>
       <div style="overflow-x:auto;">
         <table>
@@ -56,7 +90,7 @@ export function renderImportacao(contextoId, api) {
         <div>
           <select id="imp-conta">
             <option value="">— escolha uma conta —</option>
-            ${_contasCache.map(c => `<option value="${c[0]}">${c[2]}</option>`).join('')}
+            ${_contasCache.map(c => `<option value="${c[0]}">${escapeHtml(c[2])}</option>`).join('')}
           </select>
         </div>
       </div>
@@ -89,6 +123,10 @@ export function renderImportacao(contextoId, api) {
     </div>
   `;
 
+  // Quando muda a conta no select, atualiza o pill "Para onde"
+  const selConta = document.getElementById('imp-conta');
+  if (selConta) selConta.onchange = () => atualizarDestinoPill();
+
   document.getElementById('imp-pre-visualizar').onclick = preVisualizar;
   document.getElementById('imp-confirmar').onclick = confirmar;
   document.getElementById('imp-cancelar').onclick = cancelar;
@@ -96,10 +134,21 @@ export function renderImportacao(contextoId, api) {
   renderHistorico();
 }
 
+function atualizarDestinoPill() {
+  const sel = document.getElementById('imp-conta');
+  const pill = document.getElementById('imp-destino-conta');
+  if (!sel || !pill) return;
+  const id = Number(sel.value);
+  if (!id) { pill.textContent = '— não definida —'; return; }
+  const c = _contasCache.find((x) => x[0] === id);
+  pill.textContent = c ? c[2] : '—';
+}
+
 async function preVisualizar() {
   const fileInput = document.getElementById('imp-file');
   const file = fileInput.files?.[0];
   if (!file) {
+    if (globalThis.toastWarn) toastWarn('Selecione um arquivo .ofx ou .csv primeiro.');
     document.getElementById('imp-previa-info').textContent = 'Selecione um arquivo .ofx ou .csv primeiro.';
     return;
   }
@@ -108,6 +157,7 @@ async function preVisualizar() {
 
   const formato = detectarFormato(file.name);
   if (!formato) {
+    if (globalThis.toastErr) toastErr(`Formato não reconhecido em "${file.name}". Use .ofx, .qfx ou .csv.`);
     info.textContent = `Formato não reconhecido em "${file.name}". Use .ofx, .qfx ou .csv.`;
     return;
   }
@@ -116,6 +166,7 @@ async function preVisualizar() {
   try {
     conteudo = await file.text();
   } catch (e) {
+    if (globalThis.toastErr) toastErr('Erro lendo arquivo: ' + e.message);
     info.textContent = 'Erro lendo arquivo: ' + e.message;
     return;
   }
@@ -128,11 +179,20 @@ async function preVisualizar() {
       conteudo,
     });
     _importacaoAtual = idImport;
-    info.textContent = `Prévia criada (#${idImport}). ${formatBytes(file.size)} analisados.`;
+    const itens = _api('importacao:listarItens', { importacaoId: _importacaoAtual });
+    const pendentes = itens.filter((i) => i[6] === 'pendente').length;
+    const dupes = itens.filter((i) => i[6] === 'duplicado').length;
+    info.textContent = `Prévia criada (#${idImport}). ${itens.length} transações (${pendentes} pendentes, ${dupes} já existem).`;
+    if (globalThis.toastOk) toastOk(`Prévia #${idImport}: ${itens.length} transações (${pendentes} novas, ${dupes} duplicadas).`);
+    // Resumo no painel "Para onde"
+    document.getElementById('imp-destino-resumo').style.display = 'flex';
+    document.getElementById('imp-destino-resumo-texto').textContent =
+      `Prévia #${idImport} do arquivo "${file.name}": ${itens.length} transações, ${pendentes} serão importadas, ${dupes} já existem.`;
     renderTabelaPrevia();
     document.getElementById('imp-previa-panel').style.display = 'block';
     document.getElementById('imp-confirmar-panel').style.display = 'block';
   } catch (e) {
+    if (globalThis.toastErr) toastErr('Erro na prévia: ' + e.message);
     info.textContent = 'Erro: ' + e.message;
   }
 }
@@ -151,7 +211,7 @@ function renderTabelaPrevia() {
         : status === 'pendente'
           ? '<span class="pill is-static">Pendente</span>'
           : status;
-      return `<tr><td>${data}</td><td>${String(descricao || '').replaceAll('<', '&lt;')}</td><td>${valorFmt}</td><td>${statusFmt}</td></tr>`;
+      return `<tr><td>${data}</td><td>${escapeHtml(String(descricao || ''))}</td><td>${valorFmt}</td><td>${statusFmt}</td></tr>`;
     }).join('');
   }
   const pendentes = itens.filter(i => i[6] === 'pendente').length;
@@ -162,15 +222,19 @@ function renderTabelaPrevia() {
 
 function confirmar() {
   if (!_importacaoAtual) {
-    alert('Faça a pré-visualização primeiro.');
+    if (globalThis.toastWarn) toastWarn('Faça a pré-visualização primeiro.');
     return;
   }
   const contaId = Number(document.getElementById('imp-conta').value);
   if (!contaId) {
-    alert('Escolha uma conta de destino.');
+    if (globalThis.toastWarn) toastWarn('Escolha uma conta de destino antes de confirmar.');
     return;
   }
   const natureza = document.getElementById('imp-natureza').value;
+  const itensAntes = _api('importacao:listarItens', { importacaoId: _importacaoAtual });
+  const pendentes = itensAntes.filter((i) => i[6] === 'pendente').length;
+  const c = _contasCache.find((x) => x[0] === contaId);
+  const contaNome = c ? c[2] : `#${contaId}`;
   try {
     const out = _api('importacao:confirmar', {
       importacaoId: _importacaoAtual,
@@ -180,13 +244,15 @@ function confirmar() {
     _importacaoAtual = null;
     document.getElementById('imp-resultado-panel').style.display = 'block';
     document.getElementById('imp-resultado').innerHTML =
-      `<div class="success-card"><strong>${out.importados} lançamentos criados com sucesso.</strong><br>Você pode vê-los em <em>Lançamentos</em>.</div>`;
+      `<div class="success-card"><strong>${out.importados} lançamentos criados com sucesso</strong> em <em>${escapeHtml(_contextoNome)} › ${escapeHtml(contaNome)}</em>.<br>Veja em <em>Lançamentos</em>.</div>`;
     document.getElementById('imp-previa-panel').style.display = 'none';
     document.getElementById('imp-confirmar-panel').style.display = 'none';
+    document.getElementById('imp-destino-resumo').style.display = 'none';
     document.getElementById('imp-file').value = '';
+    if (globalThis.toastOk) toastOk(`Importação concluída: ${out.importados} lançamentos em ${_contextoNome} › ${contaNome}.`, 5000);
     renderHistorico();
   } catch (e) {
-    alert('Erro ao confirmar: ' + e.message);
+    if (globalThis.toastErr) toastErr('Erro ao confirmar: ' + e.message, 6000);
   }
 }
 
@@ -202,10 +268,12 @@ function cancelar() {
     _importacaoAtual = null;
     document.getElementById('imp-previa-panel').style.display = 'none';
     document.getElementById('imp-confirmar-panel').style.display = 'none';
+    document.getElementById('imp-destino-resumo').style.display = 'none';
     document.getElementById('imp-previa-info').textContent = 'Importação cancelada.';
+    if (globalThis.toastInfo) toastInfo('Importação cancelada.');
     renderHistorico();
   } catch (e) {
-    alert('Erro: ' + e.message);
+    if (globalThis.toastErr) toastErr('Erro ao cancelar: ' + e.message);
   }
 }
 
@@ -218,7 +286,7 @@ function renderHistorico() {
     return;
   }
   // Colunas: id, contexto_id, arquivo_origem, formato, hash_arquivo, total_registros, total_importados, status, mapeamento_csv, criado_em
-  div.innerHTML = `<table><thead><tr><th>#</th><th>Arquivo</th><th>Formato</th><th>Itens</th><th>Importados</th><th>Status</th><th>Data</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r[0]}</td><td>${String(r[2] || '').replaceAll('<', '&lt;')}</td><td>${r[3]}</td><td>${r[5]}</td><td>${r[6]}</td><td>${r[7]}</td><td>${String(r[9] || '').replace('T', ' ').substring(0, 19)}</td></tr>`).join('')}</tbody></table>`;
+  div.innerHTML = `<table><thead><tr><th>#</th><th>Arquivo</th><th>Formato</th><th>Itens</th><th>Importados</th><th>Status</th><th>Data</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r[0]}</td><td>${escapeHtml(String(r[2] || ''))}</td><td>${r[3]}</td><td>${r[5]}</td><td>${r[6]}</td><td>${r[7]}</td><td>${String(r[9] || '').replace('T', ' ').substring(0, 19)}</td></tr>`).join('')}</tbody></table>`;
 }
 
 function detectarFormato(nome) {
@@ -232,4 +300,8 @@ function formatBytes(n) {
   if (n < 1024) return n + ' B';
   if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
   return (n / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

@@ -213,10 +213,11 @@ function salvar() {
     const strong = document.querySelector('.topbar strong');
     if (strong) strong.textContent = novoNome;
     setBackupStatus('Salvo.', false);
+    if (globalThis.toastOk) toastOk('Configurações salvas.');
     // Reaplica o preview pra garantir que tema/cor reflitam o que foi salvo.
     aplicarPreview();
   } catch (e) {
-    alert('Erro ao salvar: ' + e.message);
+    if (globalThis.toastErr) toastErr('Erro ao salvar: ' + e.message);
   }
 }
 
@@ -226,18 +227,24 @@ function cancelar() {
   _configCache = _api('configuracoes:listar');
   popularForm();
   setBackupStatus('Alteracoes descartadas.', false);
+  if (globalThis.toastInfo) toastInfo('Alterações descartadas.');
 }
 
 function resetar() {
   if (!confirm('Apagar todas as configurações e voltar aos defaults?')) return;
-  _api('configuracoes:resetar');
-  // SEM location.reload() — re-aplica o form com os defaults.
-  _configCache = _api('configuracoes:listar');
-  popularForm();
-  aplicarPreview();
-  const strong = document.querySelector('.topbar strong');
-  if (strong) strong.textContent = _configCache.nome_exibicao?.valor || 'MLopes Finance';
-  setBackupStatus('Restaurado para o padrao de fabrica.', false);
+  try {
+    _api('configuracoes:resetar');
+    // SEM location.reload() — re-aplica o form com os defaults.
+    _configCache = _api('configuracoes:listar');
+    popularForm();
+    aplicarPreview();
+    const strong = document.querySelector('.topbar strong');
+    if (strong) strong.textContent = _configCache.nome_exibicao?.valor || 'MLopes Finance';
+    setBackupStatus('Restaurado para o padrao de fabrica.', false);
+    if (globalThis.toastOk) toastOk('Configurações restauradas para o padrão de fábrica.');
+  } catch (e) {
+    if (globalThis.toastErr) toastErr('Erro ao resetar: ' + e.message);
+  }
 }
 
 function setBackupStatus(msg, isError = false) {
@@ -265,8 +272,10 @@ async function exportarBackup() {
     }
     await NL.filesystem.writeBinaryFile(caminho, bytes);
     setBackupStatus(`Backup exportado: ${caminho} (${formatBytes(bytes.length)})`);
+    if (globalThis.toastOk) toastOk(`Backup exportado (${formatBytes(bytes.length)}).`);
   } catch (e) {
     setBackupStatus('Erro: ' + e.message, true);
+    if (globalThis.toastErr) toastErr('Erro ao exportar backup: ' + e.message);
   }
 }
 
@@ -290,8 +299,10 @@ async function restaurarBackup() {
     }
     const out = _api('backup:restaurar', { bytes });
     setBackupStatus(`Backup restaurado. Registros: ${JSON.stringify(out.contagens)}`);
+    if (globalThis.toastOk) toastOk('Backup restaurado.');
   } catch (e) {
     setBackupStatus('Erro: ' + e.message, true);
+    if (globalThis.toastErr) toastErr('Erro ao restaurar backup: ' + e.message);
   }
 }
 
@@ -299,8 +310,10 @@ function radiografar() {
   try {
     const r = _api('backup:radiografar');
     setBackupStatus('Contagens: ' + Object.entries(r).map(([t, n]) => `${t}=${n}`).join('  '));
+    if (globalThis.toastOk) toastOk('Radiografia do banco concluída.');
   } catch (e) {
     setBackupStatus('Erro: ' + e.message, true);
+    if (globalThis.toastErr) toastErr('Erro na radiografia: ' + e.message);
   }
 }
 

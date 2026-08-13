@@ -68,7 +68,11 @@ function formCadastro(tipo, contextoId, api, item) {
     try {
       if (item) { api(cfg.apiAtualizar, { id: item[0], ...dados }); }
       else { api(cfg.apiCriar, dados); }
+      const msg = item ? 'Cadastro atualizado.' : 'Cadastro criado.';
+      if (globalThis.toastOk) toastOk(msg);
       renderCadastroGenerico(tipo, contextoId, api);
-    } catch (err) { alert('Erro: ' + err.message); }
+    } catch (err) {
+      if (globalThis.toastErr) toastErr('Erro: ' + err.message);
+    }
   };
 }

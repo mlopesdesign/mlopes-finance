@@ -1,0 +1,28 @@
+import sqlite3, os
+banco = os.path.expandvars(r'%APPDATA%\MLopesFinance\dados\mlopes-finance.sqlite')
+con = sqlite3.connect(banco)
+c = con.cursor()
+# Inspecao profunda
+print('=== PRAGMA table_info(itens_importacao) ===')
+for r in c.execute('PRAGMA table_info(itens_importacao)'): print(' ', r)
+print()
+print('=== TODAS as importacoes (com TUDO) ===')
+for r in c.execute('SELECT * FROM importacoes'): print(' ', r)
+print()
+print('=== TODOS os itens_importacao ===')
+for r in c.execute('SELECT * FROM itens_importacao'): print(' ', r)
+print()
+print('=== Indices em itens_importacao ===')
+for r in c.execute("SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name='itens_importacao'"): print(' ', r)
+print()
+print('=== Teste de INSERT manual ===')
+try:
+    c.execute("INSERT INTO itens_importacao (importacao_id, conta_id, data_transacao, valor_centavos, descricao, chave_externa) VALUES (1, NULL, '2026-01-02', 2999, 'TESTE MANUAL', 'abc123')")
+    con.commit()
+    print('INSERT OK')
+    c.execute("DELETE FROM itens_importacao WHERE descricao='TESTE MANUAL'")
+    con.commit()
+    print('DELETE OK')
+except Exception as e:
+    print('INSERT FALHOU:', e)
+con.close()

@@ -54,6 +54,39 @@ window.addEventListener('unhandledrejection', (ev) => {
 const money = (c) => (Number(c) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const rows = (data) => data.map((r) => `<tr>${r.map((v) => `<td>${String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;')}</td>`).join('')}</tr>`).join('');
 
+// Toast global (canto inferior direito, some sozinho).
+// Uso: toast('Salvo com sucesso!', 'ok'); toast('Erro ao salvar', 'err'); toast('Info'); toast('Atenção', 'warn')
+// Tambem disponivel em globalThis.toast() pra outros modulos.
+function toast(msg, tipo = 'ok', duracaoMs = 3500) {
+  let box = document.getElementById('toast-box');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'toast-box';
+    box.className = 'toast-box';
+    document.body.appendChild(box);
+  }
+  const t = document.createElement('div');
+  t.className = `toast toast-${tipo}`;
+  t.textContent = msg;
+  // Botao fechar
+  const btn = document.createElement('button');
+  btn.className = 'toast-close';
+  btn.type = 'button';
+  btn.textContent = '×';
+  btn.onclick = () => { t.classList.add('is-hiding'); setTimeout(() => t.remove(), 200); };
+  t.appendChild(btn);
+  box.appendChild(t);
+  // Auto-fade
+  setTimeout(() => {
+    if (t.isConnected) { t.classList.add('is-hiding'); setTimeout(() => t.remove(), 200); }
+  }, duracaoMs);
+}
+globalThis.toast = toast;
+globalThis.toastOk = (m, d) => toast(m, 'ok', d);
+globalThis.toastErr = (m, d) => toast(m, 'err', d);
+globalThis.toastWarn = (m, d) => toast(m, 'warn', d);
+globalThis.toastInfo = (m, d) => toast(m, 'info', d);
+
 log('app.js modulo carregado, Neutralino=', !!globalThis.Neutralino, 'NL_PORT=', globalThis.NL_PORT);
 
 // Helper: timeout em promise (rejeita se demorar demais)
@@ -238,8 +271,9 @@ function formConta(item) {
     try {
       if (item) { api('contas:atualizar', { id: item[0], ...dados }); }
       else { api('contas:criar', dados); }
+      if (globalThis.toastOk) toastOk(item ? 'Conta atualizada.' : 'Conta criada.');
       renderContas();
-    } catch (err) { alert('Erro: ' + err.message); }
+    } catch (err) { if (globalThis.toastErr) toastErr('Erro: ' + err.message); }
   };
 }
 
@@ -268,8 +302,9 @@ function formCategoria(item) {
     try {
       if (item) { api('categorias:atualizar', { id: item[0], ...dados }); }
       else { api('categorias:criar', dados); }
+      if (globalThis.toastOk) toastOk(item ? 'Categoria atualizada.' : 'Categoria criada.');
       renderCategorias();
-    } catch (err) { alert('Erro: ' + err.message); }
+    } catch (err) { if (globalThis.toastErr) toastErr('Erro: ' + err.message); }
   };
 }
 
@@ -294,14 +329,14 @@ function formLancamento(clientes, projetos, centrosCusto) {
   if (!contas.length) { app.innerHTML = '<div class="error">Cadastre uma conta antes de registrar lançamentos.</div>'; return; }
   app.innerHTML = `<div class="panel"><h1>Novo lançamento</h1><form id="form"><div class="form-grid"><label>Descrição<input name="descricao" required></label><label>Natureza<select name="natureza"><option value="despesa">Despesa</option><option value="receita">Receita</option></select></label><label>Valor (R$)<input name="valor" inputmode="decimal" required></label><label>Data<input type="date" name="data" required value="${new Date().toISOString().slice(0,10)}"></label><label>Conta<select name="conta">${contas.map((r) => `<option value="${r[0]}">${r[2]}</option>`).join('')}</select></label><label>Categoria<select name="categoria"><option value="">Sem categoria</option>${categorias.map((r) => `<option value="${r[0]}">${r[2]}</option>`).join('')}</select></label><label>Cliente<select name="cliente"><option value="">Sem cliente</option>${clientes.map((r) => `<option value="${r[0]}">${r[2]}</option>`).join('')}</select></label><label>Projeto<select name="projeto"><option value="">Sem projeto</option>${projetos.map((r) => `<option value="${r[0]}">${r[2]}</option>`).join('')}</select></label><label>Centro de custo<select name="centro_custo"><option value="">Sem centro</option>${centrosCusto.map((r) => `<option value="${r[0]}">${r[2]}</option>`).join('')}</select></label></div><div class="form-actions"><button type="button" class="button secondary" id="cancel">Cancelar</button><button class="button">Salvar</button></div></form></div>`;
   $('#cancel').onclick = renderLancamentos;
-  $('#form').onsubmit = (e) => { e.preventDefault(); const f = new FormData(e.target); api('lancamentos:criar', { contextoId, contaId: Number(f.get('conta')), categoriaId: f.get('categoria') ? Number(f.get('categoria')) : null, clienteId: f.get('cliente') ? Number(f.get('cliente')) : null, projetoId: f.get('projeto') ? Number(f.get('projeto')) : null, centroCustoId: f.get('centro_custo') ? Number(f.get('centro_custo')) : null, natureza: f.get('natureza'), valorCentavos: Math.round(Number(String(f.get('valor')).replace(',', '.')) * 100), dataCompetencia: f.get('data'), descricao: f.get('descricao') }); renderLancamentos(); };
+  $('#form').onsubmit = (e) => { e.preventDefault(); const f = new FormData(e.target); try { api('lancamentos:criar', { contextoId, contaId: Number(f.get('conta')), categoriaId: f.get('categoria') ? Number(f.get('categoria')) : null, clienteId: f.get('cliente') ? Number(f.get('cliente')) : null, projetoId: f.get('projeto') ? Number(f.get('projeto')) : null, centroCustoId: f.get('centro_custo') ? Number(f.get('centro_custo')) : null, natureza: f.get('natureza'), valorCentavos: Math.round(Number(String(f.get('valor')).replace(',', '.')) * 100), dataCompetencia: f.get('data'), descricao: f.get('descricao') }); if (globalThis.toastOk) toastOk('Lançamento criado.'); renderLancamentos(); } catch (err) { if (globalThis.toastErr) toastErr('Erro: ' + err.message); } };
 }
 
 function formTransferencia() {
   if (contas.length < 2) { app.innerHTML = '<div class="error">Cadastre pelo menos 2 contas para transferir.</div>'; return; }
   app.innerHTML = `<div class="panel"><h1>Transferência entre contas</h1><form id="form"><div class="form-grid"><label>Conta origem<select name="origem">${contas.map((r) => `<option value="${r[0]}">${r[2]}</option>`).join('')}</select></label><label>Conta destino<select name="destino">${contas.map((r) => `<option value="${r[0]}">${r[2]}</option>`).join('')}</select></label><label>Valor (R$)<input name="valor" inputmode="decimal" required></label><label>Data<input type="date" name="data" required value="${new Date().toISOString().slice(0,10)}"></label><label>Descrição<input name="descricao" value="Transferência"></label></div><div class="form-actions"><button type="button" class="button secondary" id="cancel">Cancelar</button><button class="button">Transferir</button></div></form></div>`;
   $('#cancel').onclick = renderLancamentos;
-  $('#form').onsubmit = (e) => { e.preventDefault(); const f = new FormData(e.target); try { api('transferencias:criar', { contextoId, contaOrigemId: Number(f.get('origem')), contaDestinoId: Number(f.get('destino')), valorCentavos: Math.round(Number(String(f.get('valor')).replace(',', '.')) * 100), dataCompetencia: f.get('data'), descricao: f.get('descricao') || 'Transferência' }); renderLancamentos(); } catch (err) { alert('Erro: ' + err.message); } };
+  $('#form').onsubmit = (e) => { e.preventDefault(); const f = new FormData(e.target); try { api('transferencias:criar', { contextoId, contaOrigemId: Number(f.get('origem')), contaDestinoId: Number(f.get('destino')), valorCentavos: Math.round(Number(String(f.get('valor')).replace(',', '.')) * 100), dataCompetencia: f.get('data'), descricao: f.get('descricao') || 'Transferência' }); if (globalThis.toastOk) toastOk('Transferência registrada.'); renderLancamentos(); } catch (err) { if (globalThis.toastErr) toastErr('Erro: ' + err.message); } };
 }
 
 function formBaixa(lancamentoId) {
@@ -309,7 +344,7 @@ function formBaixa(lancamentoId) {
   const baixas = api('baixas:listar', { lancamentoId });
   app.innerHTML = `<div class="panel"><h1>Baixas do lançamento #${lancamentoId}</h1><p class="subtitle">Saldo em aberto: <strong>${money(saldo)}</strong></p><form id="form-nova"><div class="form-grid"><label>Valor (R$)<input name="valor" inputmode="decimal" required value="${(saldo/100).toFixed(2)}"></label><label>Data<input type="date" name="data" required value="${new Date().toISOString().slice(0,10)}"></label><label>Forma<input name="forma" value="pix"></label><label>Observações<input name="obs"></label></div><div class="form-actions"><button type="button" class="button secondary" id="cancel">Cancelar</button><button class="button">Registrar baixa</button></div></form><table style="margin-top:16px"><thead><tr><th>Data</th><th>Valor</th><th>Forma</th><th>Obs</th></tr></thead><tbody>${baixas.map((b) => `<tr><td>${b[3]}</td><td>${money(b[2])}</td><td>${b[4]}</td><td>${b[5] || ''}</td></tr>`).join('')}</tbody></table></div>`;
   $('#cancel').onclick = renderLancamentos;
-  $('#form-nova').onsubmit = (e) => { e.preventDefault(); const f = new FormData(e.target); try { api('baixas:registrar', { lancamentoId, valorCentavos: Math.round(Number(String(f.get('valor')).replace(',', '.')) * 100), dataBaixa: f.get('data'), formaPagamento: f.get('forma') || 'pix', observacoes: f.get('obs') || '' }); renderLancamentos(); } catch (err) { alert('Erro: ' + err.message); } };
+  $('#form-nova').onsubmit = (e) => { e.preventDefault(); const f = new FormData(e.target); try { api('baixas:registrar', { lancamentoId, valorCentavos: Math.round(Number(String(f.get('valor')).replace(',', '.')) * 100), dataBaixa: f.get('data'), formaPagamento: f.get('forma') || 'pix', observacoes: f.get('obs') || '' }); if (globalThis.toastOk) toastOk('Baixa registrada.'); renderLancamentos(); } catch (err) { if (globalThis.toastErr) toastErr('Erro: ' + err.message); } };
 }
 
 function renderTransferencias() {
