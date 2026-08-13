@@ -1,202 +1,200 @@
-// MLopes Finance — UI de Auto-update (pill no header, banner dismissible, modal)
-// Mantem state global _updateState e expoe renderPill() / renderBanner() / abrirModal()
-// Chamado pelo app.js no boot e em cada renderHeader/render
-
-const DISMISS_KEY = 'mlopes-update-dismissed-until';
-const DISMISS_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+// MLopes Finance — UI do auto-update (PADRAO secao 5 + UI similar ao
+// "Salgueiro Gestao"). E chamado pelo app.js depois do boot.
+//
+// API exportada:
+//   renderPill()           — (re)desenha a pill no header mostrando versao
+//                            disponivel. Idempotente.
+//   checar(api)            — consulta GH via api('update:checar'); se tiver
+//                            atualizacao, atualiza pill + banner.
+//   renderPainel(api, slot) — renderiza o bloco "Atualizacao do sistema" no
+//                            slot passado (Configuracoes > Avancado).
+//                            Inclui botao "Verificar agora", card com
+//                            changelog e botao "Baixar e instalar".
+//   baixarEAplicar(api)    — fluxo completo: backup do banco + download +
+//                            aplicar. Atualiza UI a cada passo.
+//
+// Estado interno: as ultimas info do update ficam em `_state` para
+// reuso entre pill/banner/modal.
 
 let _state = {
-  verificando: false,
-  ultima: null, // resultado de checarAtualizacao
-  dismissed: false,
+  versaoAtual: '0.0.0',
+  tagName: null,
+  temAtualizacao: false,
+  bodyHtml: '',
+  body: '',
+  asset: null,
+  publicadoEm: null,
+  motivo: null,
+  verificadoEm: null,
+  baixando: false,
+  percentual: 0,
+  erro: null,
 };
 
-function dismissed() {
-  try {
-    const until = Number(localStorage.getItem(DISMISS_KEY) || 0);
-    return Date.now() < until;
-  } catch { return false; }
-}
-function setDismissed() {
-  try { localStorage.setItem(DISMISS_KEY, String(Date.now() + DISMISS_TTL_MS)); } catch { /* */ }
-}
-function clearDismissed() {
-  try { localStorage.removeItem(DISMISS_KEY); } catch { /* */ }
-}
-
-/** Chama checarAtualizacao e atualiza o state. Retorna o resultado. */
-export async function checar(api) {
-  _state.verificando = true;
-  _state.dismissed = dismissed();
-  renderPill();
-  try {
-    const out = await api('update:checar', {});
-    _state.ultima = out;
-    _state.verificando = false;
-    if (out?.temAtualizacao) clearDismissed();
-    renderPill();
-    renderBanner();
-    return out;
-  } catch (e) {
-    _state.verificando = false;
-    renderPill();
-    return { erro: e.message, temAtualizacao: false };
-  }
-}
-
-/** Renderiza (ou atualiza) a pill no header (próximo a "VERSÃO X.Y.Z"). */
+// Renderiza/atualiza a pill no header. Se nao houver pill, cria.
 export function renderPill() {
   const actions = document.getElementById('topbar-actions');
   if (!actions) return;
-  // Remove pill antiga se existir
-  const old = document.getElementById('update-pill');
-  if (old) old.remove();
-
-  if (_state.verificando) {
-    const el = document.createElement('span');
-    el.id = 'update-pill';
-    el.className = 'pill is-static update-pill';
-    el.textContent = '↻ Verificando…';
-    el.title = 'Procurando atualizacoes no GitHub';
-    actions.insertBefore(el, actions.firstChild);
-    return;
+  let pill = document.getElementById('update-pill');
+  if (!pill) {
+    pill = document.createElement('button');
+    pill.id = 'update-pill';
+    pill.className = 'pill update-pill is-hidden';
+    pill.type = 'button';
+    pill.addEventListener('click', () => irParaAtualizacao());
+    actions.appendChild(pill);
   }
-  if (_state.ultima?.temAtualizacao && !_state.dismissed) {
-    const el = document.createElement('button');
-    el.id = 'update-pill';
-    el.className = 'pill update-available';
-    el.innerHTML = `🟡 v${_state.ultima.versao} disponivel`;
-    el.title = 'Clique para ver detalhes da atualizacao';
-    el.onclick = abrirModal;
-    actions.insertBefore(el, actions.firstChild);
+  if (_state.temAtualizacao) {
+    pill.classList.remove('is-hidden');
+    pill.innerHTML = `<span class="dot"></span>Nova versão ${_state.tagName} disponível`;
+    pill.title = `Atualização ${_state.tagName} disponível. Clique para ver.`;
+  } else {
+    pill.classList.add('is-hidden');
   }
 }
 
-/** Renderiza (ou atualiza) o banner dismissible no topo do #app. */
-export function renderBanner() {
-  // Remove banner antigo
-  const old = document.getElementById('update-banner');
-  if (old) old.remove();
-
-  if (!_state.ultima?.temAtualizacao || _state.dismissed) return;
-
-  const u = _state.ultima;
-  const app = document.getElementById('app');
-  if (!app) return;
-
-  const banner = document.createElement('div');
-  banner.id = 'update-banner';
-  banner.className = 'update-banner';
-  banner.innerHTML = `
-    <div class="update-banner-content">
-      <strong>🟡 Atualizacao disponivel</strong>
-      <span>Versao <code>${u.versao}</code> disponivel (voce esta na <code>v${u.versaoAtual}</code>). ${u.asset ? `${u.asset.tamanhoMB} MB.` : ''}</span>
-    </div>
-    <div class="update-banner-actions">
-      <button class="button" id="upd-atualizar">Atualizar agora</button>
-      <button class="button secondary" id="upd-detalhes">Ver detalhes</button>
-      <button class="button secondary" id="upd-depois">Mais tarde</button>
-    </div>
-  `;
-  app.insertBefore(banner, app.firstChild);
-
-  document.getElementById('upd-atualizar').onclick = aplicar;
-  document.getElementById('upd-detalhes').onclick = abrirModal;
-  document.getElementById('upd-depois').onclick = () => {
-    _state.dismissed = true;
-    setDismissed();
-    renderBanner();
-    renderPill();
-  };
-}
-
-/** Abre modal com changelog e botao atualizar. */
-export function abrirModal() {
-  if (!_state.ultima) return;
-  const u = _state.ultima;
-  // Remove modal antigo
-  const old = document.getElementById('update-modal');
-  if (old) old.remove();
-
-  const modal = document.createElement('div');
-  modal.id = 'update-modal';
-  modal.className = 'modal-backdrop';
-  modal.innerHTML = `
-    <div class="modal-content" role="dialog" aria-modal="true">
-      <header class="modal-header">
-        <h2>Atualizacao disponivel: v${u.versao}</h2>
-        <button class="modal-close" id="upd-close" aria-label="Fechar">×</button>
-      </header>
-      <div class="modal-body">
-        <p class="modal-meta">
-          Sua versao atual: <code>v${u.versaoAtual}</code> &middot;
-          ${u.asset ? `Instalador: <code>${u.asset.nome}</code> (${u.asset.tamanhoMB} MB)` : 'Instalador nao encontrado na release.'} &middot;
-          Publicada em ${u.publicadoEm ? new Date(u.publicadoEm).toLocaleString('pt-BR') : '—'}.
-        </p>
-        ${u.asset?.sha256 ? `<p class="modal-meta"><small>SHA256: <code>${u.asset.sha256}</code></small></p>` : ''}
-        <h3>Notas da versao</h3>
-        <pre class="changelog">${escapeHtml(u.changelog || '(sem notas)')}</pre>
-        <p class="modal-meta">
-          <a href="${u.url}" target="_blank" rel="noopener">Ver no GitHub ↗</a>
-        </p>
-      </div>
-      <footer class="modal-actions">
-        <button class="button secondary" id="upd-cancelar">Mais tarde</button>
-        <button class="button" id="upd-aplicar" ${u.asset ? '' : 'disabled'}>
-          ${u.asset ? 'Atualizar agora' : 'Instalador indisponivel'}
-        </button>
-      </footer>
-    </div>
-  `;
-  document.body.appendChild(modal);
-
-  const fechar = () => modal.remove();
-  document.getElementById('upd-close').onclick = fechar;
-  document.getElementById('upd-cancelar').onclick = () => {
-    _state.dismissed = true;
-    setDismissed();
-    renderBanner();
-    renderPill();
-    fechar();
-  };
-  if (u.asset) {
-    document.getElementById('upd-aplicar').onclick = aplicar;
-  }
-  // Click fora do modal-content fecha
-  modal.onclick = (e) => { if (e.target === modal) fechar(); };
-}
-
-let _aplicando = false;
-async function aplicar() {
-  if (_aplicando) return;
-  if (!_state.ultima?.asset) {
-    alert('Instalador nao encontrado na release. Baixe manualmente no GitHub.');
-    return;
-  }
-  _aplicando = true;
-  const u = _state.ultima;
-  const destino = 'C:\\Windows\\Temp\\MLopesFinance-Update.exe';
-  // Feedback
-  const btn = document.getElementById('upd-aplicar');
-  const btnBanner = document.getElementById('upd-atualizar');
-  if (btn) { btn.disabled = true; btn.textContent = 'Baixando…'; }
-  if (btnBanner) { btnBanner.disabled = true; btnBanner.textContent = 'Baixando…'; }
-
+// Consulta o backend e atualiza o estado. Retorna o estado.
+export async function checar(api, opts = {}) {
+  // Se o caller passou versaoAtual, usa; senao, busca do estado do app
+  // (injetado por app.js como globalThis._appVersion).
+  if (opts.versaoAtual) _state.versaoAtual = opts.versaoAtual;
+  else if (globalThis._appVersion) _state.versaoAtual = globalThis._appVersion;
   try {
-    const api = window._appApi;
-    if (!api) throw new Error('API nao disponivel.');
-    const out = await api('update:baixar', { assetUrl: u.asset.url, destino });
-    if (out?.erro) throw new Error(out.erro);
-    const out2 = await api('update:aplicar', { caminho: destino });
-    if (out2?.erro) throw new Error(out2.erro);
+    // O backend usa APP_VERSION do ambiente, mas passamos tambem para
+    // garantir (e para o estado da UI bater com o que foi checado).
+    const r = await api('update:checar');
+    _state = {
+      ..._state,
+      ...r,
+      versaoAtual: r.versaoAtual || _state.versaoAtual,
+      verificadoEm: new Date().toISOString(),
+      erro: null,
+    };
   } catch (e) {
-    alert('Erro: ' + e.message);
-    _aplicando = false;
-    if (btn) { btn.disabled = false; btn.textContent = 'Atualizar agora'; }
-    if (btnBanner) { btnBanner.disabled = false; btnBanner.textContent = 'Atualizar agora'; }
+    _state.erro = e?.message || 'falha ao verificar';
+    _state.temAtualizacao = false;
   }
+  renderPill();
+  // Atualiza o painel da Configuracoes > Avancado se ele estiver visivel
+  const slot = document.getElementById('atualizacao-slot');
+  if (slot) renderPainalNoSlot(api, slot);
+  return _state;
+}
+
+// Rende o painel completo de atualizacao no elemento `slot`. Idempotente.
+export function renderPainel(api, slot) {
+  if (!slot) return;
+  renderPainalNoSlot(api, slot);
+}
+
+function renderPainalNoSlot(api, slot) {
+  slot.innerHTML = `
+    <div class="atualizacao-bloco">
+      <div class="atualizacao-cabecalho">
+        <span class="atualizacao-titulo">🔄 Atualização do sistema</span>
+        <span class="atualizacao-versao">Versão instalada: <strong>v${_state.versaoAtual}</strong></span>
+        <p class="atualizacao-sub">As atualizações são baixadas do GitHub e aplicadas automaticamente — sem reinstalar o sistema.</p>
+      </div>
+      <div class="atualizacao-acoes">
+        <button class="button" id="atualizacao-checar" ${_state.erro ? '' : 'disabled'}>Verificar agora</button>
+        <span class="atualizacao-status" id="atualizacao-status"></span>
+      </div>
+      <div class="atualizacao-conteudo" id="atualizacao-conteudo">
+        ${renderConteudo()}
+      </div>
+    </div>
+  `;
+  const btn = document.getElementById('atualizacao-checar');
+  if (btn) btn.onclick = async () => {
+    btn.disabled = true;
+    btn.textContent = 'Verificando…';
+    await checar(api);
+    btn.disabled = false;
+    btn.textContent = 'Verificar agora';
+  };
+  const btnBaixar = document.getElementById('atualizacao-baixar');
+  if (btnBaixar) btnBaixar.onclick = () => baixarEAplicar(api);
+}
+
+function renderConteudo() {
+  if (_state.erro) {
+    return `<div class="atualizacao-erro">❌ ${escapeHtml(_state.erro)}</div>`;
+  }
+  if (!_state.verificadoEm) {
+    return `<div class="atualizacao-info">Clique em <strong>Verificar agora</strong> para buscar uma atualização no GitHub.</div>`;
+  }
+  if (!_state.temAtualizacao) {
+    if (_state.motivo === 'asset-nao-encontrado') {
+      return `<div class="atualizacao-info">Versão mais recente no GitHub: <strong>${escapeHtml(_state.tagName || '')}</strong>, mas o asset <code>resources.neu</code> não foi anexado. Sem atualização automática disponível.</div>`;
+    }
+    return `<div class="atualizacao-ok">✅ Você já está na versão mais recente.</div>`;
+  }
+  // Ha atualizacao
+  return `
+    <div class="atualizacao-card">
+      <div class="atualizacao-card-titulo">🆙 Nova versão disponível: <strong>${escapeHtml(_state.tagName)}</strong> <span class="atualizacao-atual">(atual: v${escapeHtml(_state.versaoAtual)})</span></div>
+      <div class="atualizacao-changelog" id="atualizacao-changelog">${_state.bodyHtml || '<em>Sem changelog.</em>'}</div>
+      <div class="atualizacao-progresso" id="atualizacao-progresso" style="display:none">
+        <div class="atualizacao-barra"><div class="atualizacao-barra-fill" id="atualizacao-barra-fill"></div></div>
+        <div class="atualizacao-progresso-texto" id="atualizacao-progresso-texto">⏳ Baixando…</div>
+      </div>
+      <div class="atualizacao-acoes-card">
+        <button class="button" id="atualizacao-baixar">⬇ Baixar e instalar</button>
+      </div>
+    </div>
+  `;
+}
+
+// Fluxo de download + aplicacao. Faz backup do banco via api, depois baixa
+// e aplica. Atualiza o progresso no DOM.
+export async function baixarEAplicar(api) {
+  if (!_state.temAtualizacao || !_state.asset) {
+    alert('Nada para baixar. Verifique primeiro.');
+    return;
+  }
+  const btn = document.getElementById('atualizacao-baixar');
+  const prog = document.getElementById('atualizacao-progresso');
+  const progTexto = document.getElementById('atualizacao-progresso-texto');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Baixando…'; }
+  if (prog) prog.style.display = 'block';
+  if (progTexto) progTexto.textContent = '⏳ Baixando resources.neu…';
+  try {
+    const r = await api('update:baixar', { assetUrl: _state.asset.url });
+    if (progTexto) progTexto.textContent = `✅ Download concluído (${formatBytes(r.size)}). Aplicando…`;
+    // Aplicar (a rota `update:aplicar` faz backup do banco antes de mover)
+    if (btn) btn.textContent = '⏳ Aplicando…';
+    const a = await api('update:aplicar');
+    if (a.reiniciado) {
+      if (progTexto) progTexto.textContent = '✅ Atualização aplicada! Reiniciando em 2 s…';
+    } else {
+      if (progTexto) progTexto.textContent = `✅ Atualização aplicada. Reinicie o app manualmente. (${a.erro || ''})`;
+    }
+  } catch (e) {
+    if (progTexto) progTexto.textContent = `❌ Falha: ${e?.message || e}`;
+    if (btn) { btn.disabled = false; btn.textContent = '⬇ Tentar novamente'; }
+  }
+}
+
+// Tenta ir direto pra Configuracoes > Avancado. Se ainda nao renderizou,
+// clica no botao "Configuracoes" da sidebar.
+function irParaAtualizacao() {
+  const btn = Array.from(document.querySelectorAll('.nav-button')).find(
+    (b) => b.dataset.view === 'configuracoes'
+  );
+  if (btn) btn.click();
+  // Aguarda render e rola ate o bloco de atualizacao
+  setTimeout(() => {
+    const el = document.getElementById('atualizacao-slot');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 250);
 }
 
 function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function formatBytes(n) {
+  if (!n || n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }

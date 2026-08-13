@@ -1,22 +1,22 @@
 # GRAPHIFY — Mapa técnico do MLopes Finance
 
-> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-12T05:55:34.484Z.
+> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-13T03:30:25.268Z.
 > Não editar manualmente. Fonte da verdade: `src/` e `tools/`.
 
 ## Resumo
 
 | Categoria | Quantidade |
 |---|---|
-| core | 10 |
-| tela | 2 |
-| backend | 4 |
+| core | 12 |
+| tela | 5 |
+| backend | 5 |
 | sql | 1 |
 | vendor | 0 |
 | tool | 3 |
 
-Total: 22 módulos.
+Total: 29 módulos.
 
-## core (10)
+## core (12)
 
 ### `src/js/backend/core/backup.js`
 
@@ -52,7 +52,9 @@ MLopes Finance — backend de configurações
 
 ### `src/js/backend/core/financeiro.js`
 
-**Exports:** `validarValorCentavos`, `validarData`, `criarContexto`, `criarConta`, `criarCategoria`
+* Retorna saldos agregados do contexto: total receitas, despesas, contas, clientes, etc.
+
+**Exports:** `validarValorCentavos`, `validarData`, `criarContexto`, `listarContextos`, `obterContexto`, `atualizarContexto`, `alternarContextoAtivo`, `resumoContexto`, `criarConta`, `atualizarConta`, `criarCategoria`, `atualizarCategoria`
 
 ### `src/js/backend/core/importacao.js`
 
@@ -76,6 +78,14 @@ MLopes Finance — recorrencias
 
 **Imports:** criarLancamento ← `./lancamentos.js`
 
+### `src/js/backend/core/relatorios.js`
+
+MLopes Finance — Relatorios e balancete (Fase 6)
+
+**Exports:** `calcularPeriodo`, `balancete`, `comparativo`, `exportaCSV`
+
+**Imports:** validarData ← `./financeiro.js`
+
 ### `src/js/backend/core/transferencias.js`
 
 MLopes Finance — transferencias entre contas do mesmo contexto
@@ -84,7 +94,13 @@ MLopes Finance — transferencias entre contas do mesmo contexto
 
 **Imports:** validarData, validarValorCentavos ← `./financeiro.js`; criarLancamento ← `./lancamentos.js`
 
-## backend (4)
+### `src/js/backend/core/update.js`
+
+MLopes Finance — atualizacao online (parte PURA: sem DOM, sem Neutralino, sem Node APIs).
+
+**Exports:** `compararVersao`, `extrairTagVersion`, `escolherAsset`, `renderizarMarkdownSimples`
+
+## backend (5)
 
 ### `src/js/backend/ambiente.js`
 
@@ -104,9 +120,17 @@ MLopes Finance — transferencias entre contas do mesmo contexto
 
 **Exports:** `criarApi`
 
-**Imports:** criarCategoria, criarConta, criarContexto ← `./core/financeiro.js`; conciliarLancamento, criarLancamento, resumo ← `./core/lancamentos.js`; getAllConfig, getConfig, setConfig, deleteConfig, resetConfig ← `./core/configuracoes.js`; criarBackup, radiografar, restaurarBackup, validarCiclo ← `./core/backup.js`; criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento ← `./core/cadastros.js`; criarTransferencia, listarTransferencias ← `./core/transferencias.js`; registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa ← `./core/baixas.js`; criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias ← `./core/recorrencias.js`; criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura ← `./core/cartoes.js`
+**Imports:** criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto, atualizarConta, atualizarCategoria ← `./core/financeiro.js`; conciliarLancamento, criarLancamento, resumo ← `./core/lancamentos.js`; getAllConfig, getConfig, setConfig, deleteConfig, resetConfig ← `./core/configuracoes.js`; criarBackup, radiografar, restaurarBackup, validarCiclo ← `./core/backup.js`; criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento ← `./core/cadastros.js`; criarTransferencia, listarTransferencias ← `./core/transferencias.js`; registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa ← `./core/baixas.js`; criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias ← `./core/recorrencias.js`; criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura ← `./core/cartoes.js`; criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao ← `./core/importacao.js`; balancete, comparativo, exportaCSV ← `./core/relatorios.js`; compararVersao ← `./core/update.js`; checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, listarReleases, pathTempInstalador ← `./update.js`; APP_VERSION ← `./ambiente.js`
 
-## tela (2)
+### `src/js/backend/update.js`
+
+MLopes Finance — atualizacao online (parte IMPURA: usa Neutralino + curl.exe).
+
+**Exports:** `pathTempInstalador`, `pathRecursoInstalado`, `checarAtualizacao`, `listarReleases`, `baixarAtualizacao`, `aplicarAtualizacao`
+
+**Imports:** compararVersao, escolherAsset, renderizarMarkdownSimples ← `./core/update.js`
+
+## tela (5)
 
 ### `src/js/telas/cadastros-generico.js`
 
@@ -120,7 +144,31 @@ MLopes Finance — Tela de Configurações
 
 **Exports:** `renderConfiguracoes`
 
-**API calls:** `configuracoes:listar`, `configuracoes:salvar`, `configuracoes:resetar`
+**API calls:** `configuracoes:listar`, `configuracoes:salvar`, `configuracoes:resetar`, `backup:exportar`, `backup:restaurar`, `backup:radiografar`
+
+### `src/js/telas/contextos.js`
+
+MLopes Finance — Tela de Contextos Financeiros (CRUD)
+
+**Exports:** `renderContextos`
+
+**API calls:** `contextos:listar`, `contextos:resumo`, `contextos:alternarAtivo`, `contextos:obter`, `contextos:atualizar`, `contextos:criar`
+
+### `src/js/telas/importacao.js`
+
+MLopes Finance — Tela de Importação de Extratos (OFX / CSV)
+
+**Exports:** `renderImportacao`
+
+**API calls:** `contas:listar`, `importacao:criarPrevia`, `importacao:listarItens`, `importacao:confirmar`, `importacao:cancelar`, `importacao:listar`
+
+### `src/js/telas/relatorios.js`
+
+MLopes Finance — Tela de Relatórios e Balancete (Fase 6)
+
+**Exports:** `renderRelatorios`
+
+**API calls:** `relatorios:comparativo`, `relatorios:balancete`, `relatorios:exportarCSV`
 
 ## tool (3)
 

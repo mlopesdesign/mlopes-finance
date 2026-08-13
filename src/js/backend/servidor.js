@@ -9,7 +9,8 @@ import { criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias } from './
 import { criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura } from './core/cartoes.js';
 import { criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao } from './core/importacao.js';
 import { balancete, comparativo, exportaCSV } from './core/relatorios.js';
-import { checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, compararVersao, pathTempInstalador } from './core/update.js';
+import { compararVersao } from './core/update.js';
+import { checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, listarReleases, pathTempInstalador } from './update.js';
 import { APP_VERSION } from './ambiente.js';
 
 export function criarApi(db, persistir = () => {}) {
@@ -95,10 +96,23 @@ export function criarApi(db, persistir = () => {}) {
     'relatorios:comparativo': (d) => comparativo(db, d),
     'relatorios:exportarCSV': (d) => exportaCSV(balancete(db, d)),
 
-    // Auto-update via GitHub Releases (Fase Hardening)
+    // Auto-update via GitHub Releases (Fase Hardening) — secao 5 do PADRAO.
+    // ATENCAO: o backup do banco eh feito na rota `update:aplicar` ANTES de
+    // chamar `aplicarAtualizacao`, conforme regra 5.1 (BACKUP obrigatorio).
     'update:checar': async (d = {}) => await checarAtualizacao({ ...d, versaoAtual: APP_VERSION }),
+    'update:listarReleases': async (d = {}) => await listarReleases(d),
     'update:baixar': async (d) => await baixarAtualizacao(d.assetUrl, d.destino || pathTempInstalador()),
-    'update:aplicar': async (d) => await aplicarAtualizacao(d.caminho || pathTempInstalador()),
+    'update:aplicar': async (d) => {
+      // BACKUP do banco antes de substituir o bundle (regra 5.1).
+      // Mantemos o backup em memoria; o caller pode persistir via update:backupPersistir.
+      const backup = criarBackup(db);
+      try {
+        return await aplicarAtualizacao(d.caminho || pathTempInstalador());
+      } catch (e) {
+        // Se a aplicacao falhar, devolve o backup para o caller decidir.
+        return { ok: false, erro: e.message, backup };
+      }
+    },
     'update:compararVersao': (d) => compararVersao(d.a, d.b),
   };
   return (canal, dados = {}) => { if (!rotas[canal]) throw new Error(`Canal nao autorizado: ${canal}`); return rotas[canal](dados); };

@@ -279,23 +279,50 @@ O sistema de **contextos** (item 3.1) isola os saldos. Para ver o balancete pess
 
 Mesmo relatório, dois cliques, saldos isolados.
 
-## 12. Atualizações automáticas (v0.7.1)
+## 12. Atualizações automáticas (v0.7.1, reescrito em v0.8.8)
 
-O MLopes Finance verifica novas versões no GitHub Releases automaticamente:
+O MLopes Finance verifica novas versões no GitHub Releases automaticamente. A v0.8.8 reescreveu todo o fluxo de auto-update no padrão ML Lopes Design (seção 5 do PADRAO) — sem token, sem `gh`, sem instalador publicado em lugar público.
 
-- **Ao abrir o app**, faz uma chamada a `https://api.github.com/repos/mlopesdesign/mlopes-finance/releases/latest` (timeout 10s, anônimo, 60 req/h por IP).
-- **Cache local em `localStorage`** com TTL de 4h — não fica martelando a API.
-- **Se tem versão nova**: aparece um **banner amarelo no topo da tela** com "🟡 Atualização disponível" + botão "Atualizar agora" / "Ver detalhes" / "Mais tarde" (este último esconde por 24h).
-- **Pill no header** ao lado de "VERSÃO X.Y.Z" mostra "🟡 v0.8.0 disponível" clicável.
-- **Clicar** abre um modal com changelog, tamanho do download, SHA256, link pro GitHub, e botão "Atualizar agora".
-- **"Atualizar agora"** baixa o instalador via `Neutralino.net` pro temp, fecha o app, e abre o instalador. O Inno Setup detecta a versão anterior (mesmo AppId) e atualiza — **sem desinstalar antes**.
-- **Verificação manual** em **Configurações → Avançado → Atualizações → "Verificar atualizações"**.
+### 12.1 Como funciona
 
-**Para o auto-update funcionar**, o owner precisa:
-1. Criar o repo `github.com/mlopesdesign/mlopes-finance`
-2. Push do source + tag `v0.7.1`
-3. Criar uma Release com o `MLopes Finance Setup.exe` como asset
-4. O user, ao abrir o app na v0.7.0 ou anterior, recebe a notificação automaticamente.
+- **Ao abrir o app**, ele faz uma chamada anônima a `https://api.github.com/repos/mlopesdesign/mlopes-finance/releases/latest` (timeout 30s, 60 req/h por IP). Sem token, sem `gh`, sem env var. Igual pro cliente final.
+- **Compara** a versão atual (em `app.js`) com a `tag_name` do release (compara SemVer: X.Y.Z).
+- **Se a versão do GitHub é maior**: aparece uma **pill no header** com "🆙 Nova versão vX.Y.Z disponível — veja em Configurações".
+- **Clicar na pill** (ou ir em **Configurações → Avançado → Atualização do sistema** → **"Verificar agora"**) abre o painel completo.
+- **Painel de atualização** (mesmo padrão visual do "Salgueiro Gestão"):
+  - Versão instalada (ex: `v0.8.8`) e a versão mais recente do GitHub.
+  - **Changelog renderizado** do body markdown do release do GitHub — você vê exatamente o que mudou antes de baixar.
+  - Botão **"Baixar e instalar"**.
+- **Ao clicar "Baixar e instalar"**:
+  1. **Backup do banco** em memória (criado na rota `update:aplicar`).
+  2. Download do **`resources.neu`** (bundle Neutralino, ~5.6 MB) via `curl.exe` (nunca `fetch()` — WebView2 bloqueia por CORS).
+  3. Substitui o `resources.neu` instalado via `cmd.exe /c move /Y`.
+  4. `Neutralino.app.restartProcess()` — o app reinicia sozinho com a nova versão. **Sem reinstalar, sem desinstalar.**
+- **Sem internet / GitHub fora do ar**: mostra erro claro ("❌ Falha ao consultar GitHub: ..."). Sem mascarar como 404 ou "repositório não encontrado".
+
+### 12.2 O que é o `resources.neu`
+
+É o **bundle do app** (HTML + JS + CSS + assets + WebView2) compactado num único arquivo pelo Neutralino build. Ele substitui o instalador `.exe` como asset de update. Vantagens:
+
+- **Rápido**: ~5.6 MB vs ~25 MB do instalador.
+- **Sem reinstalar**: o app já está rodando, só substitui o bundle e reinicia.
+- **Sem privilégios de admin**: não passa por Inno Setup, não escreve em `Program Files`, não mexe no registro.
+- **Sem .exe em lugar público**: o instalador `.exe` (primeira instalação) fica só no site de download; o `resources.neu` (updates) fica no GitHub Releases.
+
+### 12.3 Verificação manual
+
+**Configurações → Avançado → "Verificar agora"** dispara a checagem na hora (sem esperar a próxima abertura do app). O resultado aparece no painel:
+- ✅ Você já está na versão mais recente.
+- 🆙 Nova versão disponível — com changelog e botão de download.
+- ❌ Erro (sem internet, rate limit do GitHub, etc).
+
+### 12.4 Para o owner publicar uma nova versão
+
+1. Bump da versão nos 7 lugares padrão (`neutralino.config.json`, `package.json`, `installer/*.iss`, `src/js/app.js`, `src/js/backend/ambiente.js` + pares em `resources/`).
+2. Build: `npx neu build` (gera `dist/mlopes-finance/resources.neu`).
+3. Commit + push do source.
+4. Tag `vX.Y.Z` + Release com o **`resources.neu`** anexado (NÃO o instalador `.exe`).
+5. Usuários com versão anterior recebem a pill automaticamente na próxima abertura.
 
 ---
 
@@ -369,4 +396,4 @@ Ao instalar pela primeira vez, o app cria um contexto chamado **"Meu contexto"**
 
 ---
 
-*MLopes Finance v0.8.0 — Fevereiro/Agosto 2026 — ML Lopes Design*
+*MLopes Finance v0.8.8 — Agosto 2026 — ML Lopes Design*

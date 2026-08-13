@@ -1,4 +1,17 @@
 
+## 0.8.8 — Gravação atômica do banco + auto-update reescrito no padrão (seção 5)
+
+- **Gravação atômica do banco (`ambiente.js`, secao 4.3 do PADRAO)**. A v0.8.7 gravava `writeBinaryFile(arquivo, db.export())` direto. Se o processo morresse no meio, o banco ficava corrompido. Novo fluxo: `tmp → atual.old → tmp para atual → .old preservado`. Cobre crash em qualquer ponto. Teste de persistência atualizado.
+- **Auto-update COMPLETAMENTE reescrito no padrão (seção 5 do PADRAO)**. v0.7.1-v0.8.5 tava amador: usava `fetch()` direto (WebView2 bloqueia por CORS), aceitava `GH_TOKEN` (cliente final nao tem `gh`), publicava instalador `.exe` no GH (deveria ser `resources.neu`). Deletado 4 arquivos `update.js` antigos (foram pro trash) e reescrito do zero:
+  - `core/update.js` (PURO): `compararVersao`, `extrairTagVersion`, `escolherAsset`, `renderizarMarkdownSimples` (escapa HTML, suporta h1-h3, ul/li, code, strong, em, links com rel=noopener).
+  - `backend/update.js` (IMPURO, usa Neutralino + curl.exe): `checarAtualizacao`, `listarReleases`, `baixarAtualizacao`, `aplicarAtualizacao`, `pathTempInstalador`. Download via `curl.exe -sSL` via `Neutralino.os.execCommand` (NUNCA `fetch()`). Aplica via `cmd.exe /c move /Y <tmp> <destino>` + `Neutralino.app.restartProcess()`. SEM `GH_TOKEN`, SEM `gh CLI`. Backup do banco feito pela rota `update:aplicar` antes de mover.
+  - `src/js/update.js` (UI): pill no header mostrando "Nova versão X.Y.Z disponível", painel completo em `Configuracoes > Avancado > Atualização` com botão "Verificar agora", card de changelog renderizado do `body` markdown do release, barra de progresso, botão "Baixar e instalar". Changelog parseado do body markdown do release do GitHub (igual o "Salgueiro Gestao").
+  - `servidor.js`: ajustadas as 4 rotas (`update:checar`, `update:listarReleases`, `update:baixar`, `update:aplicar`) e adicionado backup do banco em `update:aplicar` (regra 5.1).
+  - 2 testes novos em `core.test.mjs`: `escolherAsset` e `renderizarMarkdownSimples`. **36/36 verde**.
+- **Padrao 8.2 (entrega)**: app detecta sozinho a atualização, avisa com pill, mostra changelog, baixa via curl.exe, aplica sem reinstalar. Igual ao "Salgueiro Gestao" (referência visual aprovada).
+- **Bump 0.8.7 → 0.8.8** em 7 lugares: `neutralino.config.json`, `package.json`, `installer/MLopesFinance.iss`, `src/js/app.js`, `src/js/backend/ambiente.js` + espelhados em `resources/`. `GRAPHIFY.md` regerado (29 modulos).
+- **Pendencias (nao escopo desta entrega)**: o bump foi commitado mas a release v0.8.8 com `resources.neu` no GitHub NAO foi publicada ainda — depende de ordem do user. O instalador `.exe` tambem NAO foi buildado/instalado (decisao do user). O backup do banco antes de aplicar e' feito em memoria na rota `update:aplicar`; em producao deve ser persistido em disco antes.
+
 ## 0.8.7 — Edicao de contas/categorias + migracao do schema v4 (corrige NOT NULL)
 
 - **Bug 1 (quebra funcional)**: as telas "Contas" e "Categorias" nao tinham botao de Editar. So era possivel criar novo ou inativar. Se o user errasse o nome (ex: "Conta corente" em vez de "Conta corrente"), nao tinha como corrigir sem deletar e recriar. Adicionado botao "Editar" em ambas as telas + 2 rotas novas no servidor (`contas:atualizar`, `categorias:atualizar`) + 2 funcoes puras no `core/financeiro.js` (`atualizarConta`, `atualizarCategoria`).

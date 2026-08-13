@@ -9,7 +9,7 @@ import { renderRelatorios } from './telas/relatorios.js';
 import { renderContextos } from './telas/contextos.js';
 import * as updUI from './update.js';
 
-const APP_VERSION = '0.8.7';
+const APP_VERSION = '0.8.8';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = []; let appDbPath = '';
 const $ = (s) => document.querySelector(s); const app = $('#app');
@@ -127,8 +127,11 @@ async function boot() {
 
   // Auto-update via GitHub Releases: checa em background, atualiza pill/banner/modal
   globalThis._appApi = api;
+  globalThis._appVersion = APP_VERSION;
   updUI.renderPill();
-  updUI.checar(api).then((r) => log('update check:', r?.temAtualizacao ? `v${r.versao} disponivel` : 'sem atualizacao')).catch((e) => log('update erro:', e.message));
+  updUI.checar(api, { versaoAtual: APP_VERSION })
+    .then((r) => log('update check:', r?.temAtualizacao ? `${r.tagName} disponivel` : (r?.erro ? `erro: ${r.erro}` : 'sem atualizacao')))
+    .catch((e) => log('update erro:', e.message));
 }
 
 function renderHeader() {

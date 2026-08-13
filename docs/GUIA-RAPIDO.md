@@ -61,3 +61,4 @@ Por enquanto, use mouse. Atalhos de teclado estão planejados para v0.6.0.
 
 - **Importar extrato**: OFX/CSV com detecção de duplicidade (item 5 do manual).
 - **Backup e restauração** em Configurações → Avançado (item 6 do manual).
+- **Atualizações automáticas** a partir do GitHub. O app checa no boot. Se tiver versão nova, aparece uma pill no header. Clique em "Verificar agora" em Configurações → Avançado para atualizar manualmente. O changelog da nova versão é mostrado antes de você clicar em "Baixar e instalar". O banco é backupeado automaticamente antes da atualização.

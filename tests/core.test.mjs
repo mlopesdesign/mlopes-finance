@@ -513,7 +513,7 @@ test('relatorios: balancete valida agrupamento invalido', () => {
     );
   })();
 });
-import { compararVersao, extrairTagVersion } from '../src/js/backend/core/update.js';
+import { compararVersao, extrairTagVersion, escolherAsset, renderizarMarkdownSimples } from '../src/js/backend/core/update.js';
 
 test('update: compararVersao identifica maior/menor/igual', () => {
   assert.equal(compararVersao('0.7.0', '0.7.0'), 0);
@@ -533,6 +533,59 @@ test('update: extrairTagVersion remove prefixo v', () => {
   assert.equal(extrairTagVersion(null), null);
   assert.equal(extrairTagVersion(''), null);
   assert.equal(extrairTagVersion(undefined), null);
+});
+
+test('update: escolherAsset acha asset por nome exato', () => {
+  const release = {
+    tag_name: 'v0.8.8',
+    assets: [
+      { name: 'Setup.exe', browser_download_url: 'https://x/Setup.exe', size: 10_000_000 },
+      { name: 'resources.neu', browser_download_url: 'https://x/resources.neu', size: 5_600_000 },
+    ],
+  };
+  const r = escolherAsset(release, 'resources.neu');
+  assert.ok(r);
+  assert.equal(r.tagName, 'v0.8.8');
+  assert.equal(r.asset.name, 'resources.neu');
+  assert.equal(r.asset.size, 5_600_000);
+  // Nao acha
+  assert.equal(escolherAsset(release, 'instalador.exe'), null);
+  // Sem assets
+  assert.equal(escolherAsset({ tag_name: 'v0.8.8' }, 'resources.neu'), null);
+  // Release null
+  assert.equal(escolherAsset(null, 'resources.neu'), null);
+});
+
+test('update: renderizarMarkdownSimples escapa HTML e converte estrutura basica', () => {
+  const md = `# O que mudou
+- Etiqueta amarela no balao com o numero de mensagens
+- Aviso rapido com som
+
+## Detalhes
+Texto simples com **negrito** e *italico* e \`codigo\`.
+
+[link](https://exemplo.com)
+`;
+  const html = renderizarMarkdownSimples(md);
+  // titulos (h1 -> h2, h2 -> h3 conforme regra de nivel+1)
+  assert.match(html, /<h2>O que mudou<\/h2>/);
+  assert.match(html, /<h3>Detalhes<\/h3>/);
+  // lista
+  assert.match(html, /<ul>[\s\S]*<li>Etiqueta amarela/);
+  assert.match(html, /<li>Aviso rapido com som<\/li>/);
+  assert.match(html, /<\/ul>/);
+  // inline
+  assert.match(html, /<strong>negrito<\/strong>/);
+  assert.match(html, /<em>italico<\/em>/);
+  assert.match(html, /<code>codigo<\/code>/);
+  // link com rel=noopener
+  assert.match(html, /<a href="https:\/\/exemplo\.com" rel="noopener noreferrer" target="_blank">link<\/a>/);
+  // XSS: <script> deve virar &lt;script&gt;
+  const xss = renderizarMarkdownSimples('<script>alert(1)</script>');
+  assert.match(xss, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  // Vazio / null
+  assert.equal(renderizarMarkdownSimples(''), '');
+  assert.equal(renderizarMarkdownSimples(null), '');
 });
 import { listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto } from '../src/js/backend/core/financeiro.js';
 
