@@ -194,3 +194,14 @@ export function cancelarImportacao(db, importacaoId) {
   db.run("UPDATE itens_importacao SET status = 'ignorado' WHERE importacao_id = ? AND status = 'pendente'", [importacaoId]);
   return true;
 }
+
+/** Exclui a importacao (e cascade os itens_importacao). Lancamentos permanecem. */
+export function excluirImportacao(db, importacaoId) {
+  if (!Number.isInteger(importacaoId)) throw new Error('importacaoId obrigatorio.');
+  const r = db.exec('SELECT id, status FROM importacoes WHERE id = ?', [importacaoId])[0]?.values?.[0];
+  if (!r) throw new Error('Importacao nao encontrada.');
+  db.run('DELETE FROM importacoes WHERE id = ?', [importacaoId]);
+  // Cascade: itens_importacao.importacao_id tem ON DELETE CASCADE — apaga junto.
+  return { ok: true, id: importacaoId, statusAnterior: r[1] };
+}
+

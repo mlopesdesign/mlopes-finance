@@ -286,7 +286,33 @@ function renderHistorico() {
     return;
   }
   // Colunas: id, contexto_id, arquivo_origem, formato, hash_arquivo, total_registros, total_importados, status, mapeamento_csv, criado_em
-  div.innerHTML = `<table><thead><tr><th>#</th><th>Arquivo</th><th>Formato</th><th>Itens</th><th>Importados</th><th>Status</th><th>Data</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r[0]}</td><td>${escapeHtml(String(r[2] || ''))}</td><td>${r[3]}</td><td>${r[5]}</td><td>${r[6]}</td><td>${r[7]}</td><td>${String(r[9] || '').replace('T', ' ').substring(0, 19)}</td></tr>`).join('')}</tbody></table>`;
+  div.innerHTML = `<table><thead><tr><th>#</th><th>Arquivo</th><th>Formato</th><th>Itens</th><th>Importados</th><th>Status</th><th>Data</th><th></th></tr></thead><tbody>${rows.map(r => {
+    const statusClass = r[7] === 'confirmada' ? 'pill' : r[7] === 'cancelada' ? 'pill is-static' : 'pill warn';
+    return `<tr>
+      <td>${r[0]}</td>
+      <td>${escapeHtml(String(r[2] || ''))}</td>
+      <td>${r[3]}</td>
+      <td>${r[5]}</td>
+      <td>${r[6]}</td>
+      <td><span class="${statusClass}">${r[7]}</span></td>
+      <td>${String(r[9] || '').replace('T', ' ').substring(0, 19)}</td>
+      <td><button class="button ghost small" data-excluir="${r[0]}" title="Excluir esta importação (lançamentos já criados permanecem)">Excluir</button></td>
+    </tr>`;
+  }).join('')}</tbody></table>`;
+  // Listeners
+  div.querySelectorAll('button[data-excluir]').forEach(btn => {
+    btn.onclick = () => {
+      const id = Number(btn.dataset.excluir);
+      if (!confirm(`Excluir a importação #${id}? Os itens pendentes/duplicados somem. Lançamentos já criados permanecem intactos.`)) return;
+      try {
+        const out = _api('importacao:excluir', { importacaoId: id });
+        if (globalThis.toastOk) toastOk(`Importação #${id} excluída.`);
+        renderHistorico();
+      } catch (e) {
+        if (globalThis.toastErr) toastErr('Erro ao excluir: ' + e.message);
+      }
+    };
+  });
 }
 
 function detectarFormato(nome) {

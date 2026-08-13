@@ -138,6 +138,8 @@ h2 { margin-top: 0; font-size: 20px; color: var(--ink); }
 .button.secondary { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); }
 .button.secondary:hover { border-color: var(--brand); color: var(--brand); }
 .button.ghost { background: transparent; color: var(--muted); border: 0; }
+.button.ghost:hover { background: var(--surface-2); color: var(--ink); }
+.button.ghost.small { padding: 4px 10px; font-size: 12px; }
 .button.danger { background: var(--negativo); color: #fff; }
 
 /* ===== TABLES ===== */

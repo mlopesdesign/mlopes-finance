@@ -15,7 +15,7 @@ import { criarTransferencia, listarTransferencias } from '../src/js/backend/core
 import { registrarBaixa, saldoEmAberto, listarBaixas } from '../src/js/backend/core/baixas.js';
 import { criarRecorrencia, gerarProximaOcorrencia } from '../src/js/backend/core/recorrencias.js';
 import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas } from '../src/js/backend/core/cartoes.js';
-import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao } from '../src/js/backend/core/importacao.js';
+import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao } from '../src/js/backend/core/importacao.js';
 import { balancete, comparativo, exportaCSV, calcularPeriodo } from '../src/js/backend/core/relatorios.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -376,6 +376,44 @@ test('importacao: cancelarImportacao marca pendentes como ignorados', async () =
   const lista = listarImportacoes(db, cid);
   assert.equal(lista.length, 1);
   assert.equal(lista[0][7], 'cancelada'); // coluna status
+});
+
+test('importacao: excluirImportacao remove a importacao (cascade nos itens) e mantem lancamentos', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'X', tipo: 'bancaria' });
+  const ofx = `<STMTTRN>\nTRNTYPE:DEBIT\nDTPOSTED:20260810\nTRNAMT:-100.00\nFITID:E1\nNAME:L1\n</STMTTRN>\n<STMTTRN>\nTRNTYPE:CREDIT\nDTPOSTED:20260811\nTRNAMT:50.00\nFITID:E2\nNAME:L2\n</STMTTRN>`;
+  const id = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'e.ofx', formato: 'ofx', conteudo: ofx });
+  const out = confirmarImportacao(db, { importacaoId: id, contaId });
+  assert.equal(out.importados, 2);
+  // Antes: 2 lancamentos
+  assert.equal(db.exec('SELECT COUNT(*) FROM lancamentos WHERE contexto_id = ?', [cid])[0]?.values?.[0]?.[0], 2);
+  // Excluir a importacao
+  const r = excluirImportacao(db, id);
+  assert.equal(r.ok, true);
+  assert.equal(r.statusAnterior, 'confirmada');
+  // Importacao removida
+  assert.equal(db.exec('SELECT id FROM importacoes WHERE id = ?', [id]).length, 0);
+  // Itens removidos (cascade)
+  const itensRestantes = db.exec('SELECT id FROM itens_importacao WHERE importacao_id = ?', [id])[0]?.values?.length ?? 0;
+  assert.equal(itensRestantes, 0);
+  // Lancamentos permanecem intactos
+  assert.equal(db.exec('SELECT COUNT(*) FROM lancamentos WHERE contexto_id = ?', [cid])[0]?.values?.[0]?.[0], 2);
+  // Listar importacoes: vazio
+  assert.equal(listarImportacoes(db, cid).length, 0);
+  // Reimportar o mesmo arquivo (mesmo hash) agora DEVE funcionar porque a importacao antiga foi removida
+  const id2 = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'e.ofx', formato: 'ofx', conteudo: ofx });
+  assert.ok(id2);
+  // Mas os 2 itens vao ser duplicados contra os 2 lancamentos ja existentes
+  const itensNovos = db.exec('SELECT status FROM itens_importacao WHERE importacao_id = ?', [id2])[0]?.values ?? [];
+  assert.equal(itensNovos.length, 2);
+  assert.equal(itensNovos.every((i) => i[0] === 'duplicado'), true);
+});
+
+test('importacao: excluirImportacao rejeita id invalido', async () => {
+  const db = await novoBanco();
+  assert.throws(() => excluirImportacao(db, 'abc'), /obrigatorio/);
+  assert.throws(() => excluirImportacao(db, 99999), /nao encontrada/);
 });
 
 test('relatorios: balancete basico agrupa por categoria e soma certo', async () => {

@@ -309,3 +309,16 @@ Esta versÃ£o sÃ³ pode ser marcada como pronta apÃ³s a validaÃ§Ã£o do e
 - **Toast global**: novo helper `globalThis.toast(msg, tipo)` (tipos: `ok`, `err`, `warn`, `info`). Substitui todos os `alert()` por toasts não-bloqueantes. Usado em: salvar/cancelar/resetar de Configurações, criar/editar de Cadastros, criar Lançamento, registrar Baixa, criar Transferência, importar/cancelar Importação, exportar/restaurar Backup.
 - **Tela de Importação reescrita**: novo painel "📍 Para onde vão os dados" no topo mostrando contexto financeiro + conta de destino (atualiza em tempo real) + resumo da prévia. Sem esse painel, o user não sabia pra onde os dados iam. Feedback ao vivo em todos os pontos (prévia criada, importar OK, importar cancelado, erro).
 - **36/36 testes verde.** Hotfix aplicado direto no `resources.neu` instalado.
+
+
+## 0.8.8-hotfix3 — Excluir importação do histórico (libera reimportação)
+
+- **Pedido do user**: "se eu quiser importar novamente, não tem como deletá-la". A tela de Importação mostrava as importações no histórico mas não tinha botão de Excluir. Se a importação ficasse em `status='confirmada'` e o user quisesse reimportar o mesmo arquivo, o check de duplicidade por `hash_arquivo` bloqueava.
+- **Fix**:
+  - Nova função `excluirImportacao(db, importacaoId)` em `core/importacao.js`. Faz `DELETE FROM importacoes WHERE id = ?` (cascade em `itens_importacao` via `ON DELETE CASCADE`). **Lançamentos criados permanecem intactos** (regra de auditoria: correção é por estorno/ajuste, não por exclusão).
+  - Nova rota `importacao:excluir` no `servidor.js`.
+  - Botão "Excluir" em cada linha do histórico de importações, com confirmação prévia. Toast de sucesso/erro.
+  - Status `confirmada` agora renderiza com pill verde; `cancelada` com pill cinza; `previa` com pill amarela (antes era texto puro).
+  - CSS `.button.ghost.small` adicionado.
+- **2 testes novos** (38/38 verde): `excluirImportacao remove cascade` + `excluirImportacao rejeita id inválido`. O teste cobre o cenário do user: excluir uma importação confirmada + reimportar o mesmo arquivo (hash bate) — agora funciona, e os itens vêm como "duplicado" contra os lançamentos já existentes.
+- **Como usar**: Importar extrato → role até o final → Histórico de importações → clique "Excluir" na linha que quer remover. Toast verde confirma. A próxima pré-visualização do mesmo arquivo vai funcionar.
