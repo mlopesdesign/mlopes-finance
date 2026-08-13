@@ -79,10 +79,6 @@ export function renderConfiguracoes(contextoId, api, dbPath = '') {
               <div><button class="button" id="cfg-exportar-backup">Exportar backup…</button></div>
             </div>
             <div class="field-row">
-              <div><div class="field-label">Exportar backup do banco</div><div class="field-help">Cria um arquivo .sqlite a partir do estado atual. Guarde em local seguro.</div></div>
-              <div><button class="button" id="cfg-exportar-backup">Exportar backup…</button></div>
-            </div>
-            <div class="field-row">
               <div><div class="field-label">Restaurar de um backup</div><div class="field-help">Escolha um .sqlite exportado antes. O banco atual será substituído (com validação).</div></div>
               <div><button class="button secondary" id="cfg-restaurar-backup">Restaurar de arquivo…</button></div>
             </div>

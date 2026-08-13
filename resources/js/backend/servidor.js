@@ -103,13 +103,13 @@ export function criarApi(db, persistir = () => {}) {
     // chamar `aplicarAtualizacao`, conforme regra 5.1 (BACKUP obrigatorio).
     'update:checar': async (d = {}) => await checarAtualizacao({ ...d, versaoAtual: APP_VERSION }),
     'update:listarReleases': async (d = {}) => await listarReleases(d),
-    'update:baixar': async (d) => await baixarAtualizacao(d.assetUrl, d.destino || pathTempInstalador()),
+    'update:baixar': async (d) => await baixarAtualizacao(d.assetUrl, d.destino),
     'update:aplicar': async (d) => {
       // BACKUP do banco antes de substituir o bundle (regra 5.1).
       // Mantemos o backup em memoria; o caller pode persistir via update:backupPersistir.
       const backup = criarBackup(db);
       try {
-        return await aplicarAtualizacao(d.caminho || pathTempInstalador());
+        return await aplicarAtualizacao(d.caminho);
       } catch (e) {
         // Se a aplicacao falhar, devolve o backup para o caller decidir.
         return { ok: false, erro: e.message, backup };
