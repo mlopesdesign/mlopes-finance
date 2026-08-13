@@ -283,3 +283,6 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--brand); out
 .atualizacao-ok { padding: 10px 12px; background: rgba(15, 123, 70, 0.08); border: 1px solid #0f7b46; border-radius: var(--radius-sm); color: #0f7b46; font-size: 13px; }
 [data-theme="dark"] .atualizacao-erro { background: rgba(180, 35, 24, 0.18); color: #ff9b94; }
 [data-theme="dark"] .atualizacao-ok { background: rgba(15, 123, 70, 0.18); color: #7ad8a3; }
+
+/* util */
+.is-hidden { display: none !important; }

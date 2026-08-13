@@ -144,7 +144,9 @@ export function renderConfiguracoes(contextoId, api, dbPath = '') {
   if (dbPathEl) dbPathEl.textContent = dbPath || 'caminho nao disponivel';
 
   document.getElementById('cfg-salvar').onclick = salvar;
-  document.getElementById('cfg-cancelar').onclick = () => location.reload();
+  // Cancelar: descarta o que estava sendo editado e recarrega do banco SEM reload da pagina.
+  // location.reload() causava tela branca entre unload e load (boot do app).
+  document.getElementById('cfg-cancelar').onclick = cancelar;
   document.getElementById('cfg-reset').onclick = resetar;
   document.getElementById('cfg-exportar-backup').onclick = exportarBackup;
   document.getElementById('cfg-restaurar-backup').onclick = restaurarBackup;
@@ -205,16 +207,37 @@ function salvar() {
     _api('configuracoes:salvar', { chave: 'nome_exibicao', valor: novoNome, tipo: 'texto' });
     _api('configuracoes:salvar', { chave: 'locale', valor: novoLocale, tipo: 'texto' });
     _api('configuracoes:salvar', { chave: 'moeda', valor: novaMoeda, tipo: 'texto' });
-    location.reload();
+    // SEM location.reload() — causa tela branca no boot.
+    // Aplica direto no DOM: tema + cor ja' atualizados por aplicarPreview().
+    // Atualiza o nome no topbar sem precisar reload.
+    const strong = document.querySelector('.topbar strong');
+    if (strong) strong.textContent = novoNome;
+    setBackupStatus('Salvo.', false);
+    // Reaplica o preview pra garantir que tema/cor reflitam o que foi salvo.
+    aplicarPreview();
   } catch (e) {
     alert('Erro ao salvar: ' + e.message);
   }
 }
 
+function cancelar() {
+  // Descarta alteracoes locais: recarrega do banco e re-renderiza o form
+  // SEM location.reload() (causa tela branca no boot).
+  _configCache = _api('configuracoes:listar');
+  popularForm();
+  setBackupStatus('Alteracoes descartadas.', false);
+}
+
 function resetar() {
   if (!confirm('Apagar todas as configurações e voltar aos defaults?')) return;
   _api('configuracoes:resetar');
-  location.reload();
+  // SEM location.reload() — re-aplica o form com os defaults.
+  _configCache = _api('configuracoes:listar');
+  popularForm();
+  aplicarPreview();
+  const strong = document.querySelector('.topbar strong');
+  if (strong) strong.textContent = _configCache.nome_exibicao?.valor || 'MLopes Finance';
+  setBackupStatus('Restaurado para o padrao de fabrica.', false);
 }
 
 function setBackupStatus(msg, isError = false) {
