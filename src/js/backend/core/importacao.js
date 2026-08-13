@@ -36,16 +36,18 @@ export function parsearOFX(texto) {
     const dMatch = dataStr.match(/^(\d{4})(\d{2})(\d{2})/);
     if (!dMatch) continue;
     const dataISO = `${dMatch[1]}-${dMatch[2]}-${dMatch[3]}`;
-    const valor = Math.abs(parseFloat(valorStr.replace(',', '.')));
+    const valor = parseFloat(valorStr.replace(',', '.'));
     if (isNaN(valor)) continue;
+    // Preserva o sinal: < 0 = debito/despesa, > 0 = credito/receita.
     const valorCentavos = Math.round(valor * 100);
-    const fitidFinal = fitid || `${dataISO}|${valorCentavos}|${descricao}`;
+    const fitidFinal = fitid || `${dataISO}|${Math.abs(valorCentavos)}|${descricao}`;
     transacoes.push({
       data_transacao: dataISO,
       valor_centavos: valorCentavos,
       descricao,
       chave_externa: hashString(fitidFinal),
       tipo_ofx: tipo || 'OUTROS',
+      natureza_sugerida: valor < 0 ? 'despesa' : 'receita',
     });
   }
   return transacoes;
@@ -70,11 +72,13 @@ export function parsearCSV(texto, mapeamento = null) {
     const descricao = (campos[map.descricao] || '').trim() || `Linha ${i + 1}`;
     const dataISO = normalizarData(data);
     if (!dataISO) continue;
+    // Preserva o sinal: < 0 = despesa, > 0 = receita.
+    const valorCentavos = Math.round(valor * 100);
     transacoes.push({
       data_transacao: dataISO,
-      valor_centavos: Math.round(Math.abs(valor) * 100),
+      valor_centavos: valorCentavos,
       descricao,
-      chave_externa: hashString(`${dataISO}|${Math.round(Math.abs(valor) * 100)}|${descricao}`),
+      chave_externa: hashString(`${dataISO}|${Math.abs(valorCentavos)}|${descricao}`),
       natureza_sugerida: valor < 0 ? 'despesa' : 'receita',
     });
   }
@@ -144,12 +148,16 @@ export function criarPreviaImportacao(db, { contextoId, arquivoOrigem, formato, 
     db.run(`INSERT INTO itens_importacao (importacao_id, conta_id, data_transacao, valor_centavos, descricao, chave_externa) VALUES (?, NULL, ?, ?, ?, ?)`,
       [idImport, it.data_transacao, it.valor_centavos, it.descricao, it.chave_externa]);
   }
-  // Detecta duplicados contra lancamentos ja existentes (mesma data + valor + descricao)
+  // Detecta duplicados contra lancamentos ja existentes (mesma data + valor absoluto + descricao).
+  // valor_centavos no item pode ser negativo (despesa) mas no lancamento e' sempre positivo
+  // (schema CHECK valor_centavos > 0), entao comparamos via Math.abs no JS.
   for (const it of db.exec('SELECT id, data_transacao, valor_centavos, descricao FROM itens_importacao WHERE importacao_id = ?', [idImport])[0]?.values ?? []) {
-    const dupLanc = db.exec(
-      'SELECT id FROM lancamentos WHERE contexto_id = ? AND data_competencia = ? AND valor_centavos = ? AND descricao = ? LIMIT 1',
-      [contextoId, it[1], it[2], it[3]]
-    )[0]?.values?.[0]?.[0];
+    const candidatos = db.exec(
+      'SELECT id, valor_centavos FROM lancamentos WHERE contexto_id = ? AND data_competencia = ? AND descricao = ?',
+      [contextoId, it[1], it[3]]
+    )[0]?.values ?? [];
+    const valorAbs = Math.abs(it[2]);
+    const dupLanc = candidatos.find((l) => l[1] === valorAbs);
     if (dupLanc) {
       db.run("UPDATE itens_importacao SET status = 'duplicado' WHERE id = ?", [it[0]]);
     }
@@ -166,7 +174,13 @@ export function confirmarImportacao(db, { importacaoId, contaId, padraoNatureza 
   db.run('BEGIN');
   try {
     for (const [id, data, valor, descricao] of itens) {
-      const natureza = valor < 0 ? 'despesa' : (padraoNatureza === 'receita' ? 'receita' : 'despesa');
+      // Sinal do valor define a natureza. Positivo = receita, negativo = despesa.
+      // So usa padraoNatureza quando o valor e' 0 (nao acontece pq parser filtra)
+      // ou quando o valor vier sem sinal do OFX antigo (legado).
+      let natureza;
+      if (valor < 0) natureza = 'despesa';
+      else if (valor > 0) natureza = 'receita';
+      else natureza = padraoNatureza === 'receita' ? 'receita' : 'despesa';
       const idLanc = criarLancamento(db, {
         contextoId: Number(db.exec('SELECT contexto_id FROM importacoes WHERE id = ?', [importacaoId])[0].values[0][0]),
         contaId, natureza,

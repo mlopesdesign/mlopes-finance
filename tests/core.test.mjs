@@ -290,12 +290,16 @@ NAME:SALARIO
   const txs = parsearOFX(ofx);
   assert.equal(txs.length, 2);
   assert.equal(txs[0].data_transacao, '2026-08-10');
-  assert.equal(txs[0].valor_centavos, 15050);
+  // Preserva sinal: -150.50 = -15050 centavos (despesa)
+  assert.equal(txs[0].valor_centavos, -15050);
   assert.equal(txs[0].descricao, 'IFOOD');
+  assert.equal(txs[0].natureza_sugerida, 'despesa');
   assert.ok(txs[0].chave_externa.length > 0);
   assert.equal(txs[1].data_transacao, '2026-08-11');
+  // Positivo: 3500.00 = 350000 centavos (receita)
   assert.equal(txs[1].valor_centavos, 350000);
   assert.equal(txs[1].descricao, 'SALARIO');
+  assert.equal(txs[1].natureza_sugerida, 'receita');
   // Chaves devem ser diferentes
   assert.notEqual(txs[0].chave_externa, txs[1].chave_externa);
 });
@@ -308,16 +312,23 @@ test('importacao: parsearCSV com virgula e ponto-e-virgula', async () => {
   assert.equal(txs1[0].valor_centavos, 15050);
   assert.equal(txs1[0].descricao, 'Compra A');
   assert.equal(txs1[1].valor_centavos, 8990);
+  // natureza_sugerida: positivo = receita
+  assert.equal(txs1[0].natureza_sugerida, 'receita');
+  assert.equal(txs1[1].natureza_sugerida, 'receita');
 
   // CSV com ponto-e-virgula (formato BR/PT) e data dd/mm/yyyy
   const csvPontoVirgula = `data;valor;descricao\n10/08/2026;-200,00;Padaria\n11/08/2026;1500,00;Salario`;
   const txs2 = parsearCSV(csvPontoVirgula);
   assert.equal(txs2.length, 2);
   assert.equal(txs2[0].data_transacao, '2026-08-10');
-  assert.equal(txs2[0].valor_centavos, 20000);
+  // Preserva sinal: negativo = despesa
+  assert.equal(txs2[0].valor_centavos, -20000);
   assert.equal(txs2[0].descricao, 'Padaria');
+  assert.equal(txs2[0].natureza_sugerida, 'despesa');
+  // Positivo = receita
   assert.equal(txs2[1].data_transacao, '2026-08-11');
   assert.equal(txs2[1].valor_centavos, 150000);
+  assert.equal(txs2[1].natureza_sugerida, 'receita');
 });
 
 test('importacao: criarPreviaImportacao detecta duplicado contra mesmo arquivo', async () => {
@@ -414,6 +425,37 @@ test('importacao: excluirImportacao rejeita id invalido', async () => {
   const db = await novoBanco();
   assert.throws(() => excluirImportacao(db, 'abc'), /obrigatorio/);
   assert.throws(() => excluirImportacao(db, 99999), /nao encontrada/);
+});
+
+test('importacao: CSV com sinal cria lancamentos com natureza correta (despesa/receita)', async () => {
+  // Bug v0.8.8: parsearCSV fazia Math.abs(valor) e o sinal se perdia.
+  // Resultado: tudo virava 'despesa' (padraoNatureza default).
+  // Fix: sinal preservado em valor_centavos (negativo=despesa, positivo=receita).
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Banco', tipo: 'bancaria' });
+  // CSV do extrato real: tem despesas (negativo) E receitas (positivo)
+  const csv = `data;descricao;valor
+10/01/2026;PIX ENVIADO - MERCADO;-150,50
+11/01/2026;PIX RECEBIDO - CLIENTE;1500,00
+12/01/2026;DEBITO COMBUSTIVEL;-250,00
+13/01/2026;SALARIO;5000,00`;
+  const id = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'exemplo.csv', formato: 'csv', conteudo: csv });
+  const out = confirmarImportacao(db, { importacaoId: id, contaId });
+  assert.equal(out.importados, 4);
+  // Verifica natureza de cada lancamento
+  const lancs = db.exec('SELECT id, natureza, valor_centavos, descricao FROM lancamentos WHERE contexto_id = ? ORDER BY data_competencia', [cid])[0]?.values ?? [];
+  assert.equal(lancs.length, 4);
+  // Despesas
+  assert.equal(lancs[0][1], 'despesa');
+  assert.equal(lancs[0][2], 15050);
+  assert.equal(lancs[2][1], 'despesa');
+  assert.equal(lancs[2][2], 25000);
+  // Receitas
+  assert.equal(lancs[1][1], 'receita');
+  assert.equal(lancs[1][2], 150000);
+  assert.equal(lancs[3][1], 'receita');
+  assert.equal(lancs[3][2], 500000);
 });
 
 test('relatorios: balancete basico agrupa por categoria e soma certo', async () => {
