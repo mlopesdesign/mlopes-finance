@@ -1,5 +1,5 @@
 import { criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto, atualizarConta, atualizarCategoria, excluirContexto, excluirConta, excluirCategoria } from './core/financeiro.js';
-import { conciliarLancamento, criarLancamento, resumo, excluirLancamento, estornarLancamento, editarLancamento, listarLancamentos, listarLancamentosDetalhados, obterLancamento } from './core/lancamentos.js';
+import { conciliarLancamento, criarLancamento, resumo, excluirLancamento, excluirTodosLancamentos, estornarLancamento, editarLancamento, listarLancamentos, listarLancamentosDetalhados, obterLancamento } from './core/lancamentos.js';
 import { getAllConfig, getConfig, setConfig, deleteConfig, resetConfig } from './core/configuracoes.js';
 import { criarBackup, radiografar, restaurarBackup, validarCiclo, resetarBanco } from './core/backup.js';
 import { criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento, excluirCliente, excluirFornecedor, excluirProjeto, excluirCentroCusto, excluirTag, desvincularTagLancamento } from './core/cadastros.js';
@@ -35,6 +35,7 @@ export function criarApi(db, persistir = () => {}) {
     'lancamentos:criar': (d) => { const id = criarLancamento(db, d); persistir(); return id; },
     'lancamentos:conciliar': (d) => { const out = conciliarLancamento(db, d.id); persistir(); return out; },
     'lancamentos:excluir': (d) => { const r = excluirLancamento(db, d.id); persistir(); return r; },
+    'lancamentos:excluirTodos': (d) => { const r = excluirTodosLancamentos(db, d.contextoId); persistir(); return r; },
     'lancamentos:estornar': (d) => { const r = estornarLancamento(db, d.id, d.dataEstorno); persistir(); return r; },
     'lancamentos:editar': (d) => { const r = editarLancamento(db, d.id, d.campos); persistir(); return r; },
     'dashboard:resumo': (d) => resumo(db, d.contextoId),

@@ -163,6 +163,39 @@ export function listarLancamentos(db, contextoId, { incluirEstornados = false, l
  * Lancamentos de transferencia NAO aparecem (sao "movimentacao interna", nao
  * receita/despesa do contexto). Sao geridos pela tela de Transferencias.
  */
+/**
+ * Exclui TODOS os lancamentos de um contexto (com cascade: baixas, transferências
+ * vinculadas, tags). NAO apaga os cadastros (contas, categorias, clientes, etc).
+ * Uso: botao "Excluir todos" da tela de Lancamentos, para limpar a tela sem resetar
+ * o banco inteiro (o user mantem os cadastros, so limpa os movimentos).
+ */
+export function excluirTodosLancamentos(db, contextoId) {
+  if (!Number.isInteger(contextoId)) throw new Error('contextoId obrigatorio.');
+  // Coleta IDs antes (pq o DELETE cascata pode bagunçar a contagem)
+  const ids = db.exec('SELECT id FROM lancamentos WHERE contexto_id = ?', [contextoId])[0]?.values?.map(r => r[0]) ?? [];
+  if (!ids.length) return { ok: true, excluidos: 0 };
+  db.run('BEGIN');
+  try {
+    // 1. Limpar transferencia_id dos lancamentos deste contexto PRIMEIRO
+    //    (FK lancamentos.transferencia_id -> transferencias.id e' NO ACTION; sem
+    //    isso, o DELETE da transferencia falha com FK constraint).
+    db.run('UPDATE lancamentos SET transferencia_id = NULL WHERE contexto_id = ? AND transferencia_id IS NOT NULL', [contextoId]);
+    // 2. Excluir transferencias deste contexto
+    db.run('DELETE FROM transferencias WHERE contexto_id = ?', [contextoId]);
+    // 3. Limpar referencias nos itens_importacao
+    db.run('UPDATE itens_importacao SET lancamento_id = NULL, status = ? WHERE lancamento_id IN (' + ids.map(() => '?').join(',') + ')', ['ignorado', ...ids]);
+    // 4. Excluir baixas vinculadas
+    db.run('DELETE FROM baixas WHERE lancamento_id IN (' + ids.map(() => '?').join(',') + ')', ids);
+    // 5. Excluir lancamentos (cascade: lancamento_tags via FK ON DELETE CASCADE)
+    db.run('DELETE FROM lancamentos WHERE id IN (' + ids.map(() => '?').join(',') + ')', ids);
+    db.run('COMMIT');
+  } catch (e) {
+    db.run('ROLLBACK');
+    throw e;
+  }
+  return { ok: true, excluidos: ids.length };
+}
+
 export function listarLancamentosDetalhados(db, contextoId, { incluirEstornados = false, limite = 500 } = {}) {
   if (!Number.isInteger(contextoId)) return [];
   const condEstornado = incluirEstornados ? '' : "AND l.status != 'estornado'";

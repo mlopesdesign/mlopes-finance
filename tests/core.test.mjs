@@ -22,7 +22,7 @@ import { excluirContexto, excluirConta, excluirCategoria } from '../src/js/backe
 import { excluirCliente, excluirFornecedor, excluirProjeto, excluirCentroCusto, excluirTag, desvincularTagLancamento } from '../src/js/backend/core/cadastros.js';
 import { excluirRecorrencia, desativarRecorrencia } from '../src/js/backend/core/recorrencias.js';
 import { excluirTransferencia } from '../src/js/backend/core/transferencias.js';
-import { excluirLancamento, estornarLancamento, editarLancamento, listarLancamentos, listarLancamentosDetalhados, obterLancamento } from '../src/js/backend/core/lancamentos.js';
+import { excluirLancamento, excluirTodosLancamentos, estornarLancamento, editarLancamento, listarLancamentos, listarLancamentosDetalhados, obterLancamento } from '../src/js/backend/core/lancamentos.js';
 import { resetarBanco } from '../src/js/backend/core/backup.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -1308,4 +1308,50 @@ test('listarLancamentosDetalhados: exclui transferencias e estornados por padrao
   const r = listarLancamentosDetalhados(db, cid);
   // Os 2 lancamentos da transferencia (saida + entrada) nao devem aparecer
   assert.equal(r.length, 0, 'transferencias nao aparecem em listarLancamentosDetalhados');
+});
+
+// --- excluirTodosLancamentos (v0.8.17) ---
+// Botao "Excluir todos" da tela de Lancamentos. Apaga todos os lancamentos do
+// contexto (com cascade: baixas, tags, transferencias orfas) sem mexer
+// nos cadastros (contas, categorias, clientes, etc).
+test('excluirTodosLancamentos: apaga todos os lancamentos + cascade (baixas, transferencias)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'Limpar' });
+  const c1 = criarConta(db, { contextoId: cid, nome: 'Conta1' });
+  const c2 = criarConta(db, { contextoId: cid, nome: 'Conta2' });
+  const cat = criarCategoria(db, { contextoId: cid, nome: 'Cat', natureza: 'despesa' });
+  // 3 lancamentos manuais
+  const l1 = criarLancamento(db, { contextoId: cid, contaId: c1, categoriaId: cat, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'A' });
+  const l2 = criarLancamento(db, { contextoId: cid, contaId: c1, natureza: 'receita', valorCentavos: 200, dataCompetencia: '2026-08-02', descricao: 'B' });
+  const l3 = criarLancamento(db, { contextoId: cid, contaId: c2, natureza: 'despesa', valorCentavos: 300, dataCompetencia: '2026-08-03', descricao: 'C' });
+  // 1 transferencia (gera 2 lancamentos: saida + entrada)
+  const t = criarTransferencia(db, { contextoId: cid, contaOrigemId: c1, contaDestinoId: c2, valorCentavos: 50, dataCompetencia: '2026-08-04' });
+  // 1 baixa em l1
+  const { registrarBaixa } = await import('../src/js/backend/core/baixas.js');
+  registrarBaixa(db, { lancamentoId: l1, valorCentavos: 50, dataBaixa: '2026-08-05' });
+  // Sanity: 3 manuais + 2 transferencia = 5
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM lancamentos WHERE contexto_id = ?', [cid])[0].values[0][0]), 5, 'sanity: 3 manuais + 2 transferencia');
+  // Excluir todos
+  const r = excluirTodosLancamentos(db, cid);
+  assert.equal(r.ok, true);
+  assert.equal(r.excluidos, 5, '5 lancamentos excluidos (3 + 2 transferencia)');
+  // Cadastros preservados
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM contas WHERE contexto_id = ?', [cid])[0].values[0][0]), 2, 'contas preservadas');
+  // 1 categoria customizada (Cat) + 1 seed (Transferencia interna) = 2
+  assert.equal(Number(db.exec("SELECT COUNT(*) FROM categorias WHERE contexto_id = ? AND nome != 'Transferência interna'", [cid])[0].values[0][0]), 1, 'categoria custom preservada');
+  // Baixas apagadas
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM baixas')[0].values[0][0]), 0, 'baixas apagadas');
+  // Transferencias orfas apagadas
+  assert.equal(Number(db.exec('SELECT COUNT(*) FROM transferencias')[0].values[0][0]), 0, 'transferencia orfa apagada');
+});
+
+test('excluirTodosLancamentos: idempotente (rodar 2x da certo)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'A' });
+  const r1 = excluirTodosLancamentos(db, cid);
+  assert.equal(r1.excluidos, 1);
+  const r2 = excluirTodosLancamentos(db, cid);
+  assert.equal(r2.excluidos, 0, 'segunda chamada nao exclui nada');
 });

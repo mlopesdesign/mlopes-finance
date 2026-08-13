@@ -9,7 +9,7 @@ import { renderRelatorios } from './telas/relatorios.js';
 import { renderContextos } from './telas/contextos.js';
 import * as updUI from './update.js';
 
-const APP_VERSION = '0.8.16';
+const APP_VERSION = '0.8.17';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = []; let appDbPath = '';
 const $ = (s) => document.querySelector(s); const app = $('#app');
@@ -251,7 +251,7 @@ function renderContas() {
     const nome = String(r[2] || '').replace(/[<>&"']/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;' }[c]));
     return `<tr><td>${nome}</td><td>${r[3] || ''}</td><td>${money(r[4] || 0)}</td><td><button class="button ghost" data-edit="${r[0]}">Editar</button> <button class="button danger" data-excluir="${r[0]}" data-nome="${nome}">Excluir</button></td></tr>`;
   }).join('') : '';
-  app.innerHTML = `<div class="toolbar"><div><h1>Contas</h1><p class="subtitle">Contas bancárias, cartões e investimentos.</p></div><button class="button" id="new">Nova conta</button></div><div class="panel"><table><thead><tr><th>Nome</th><th>Tipo</th><th>Saldo inicial</th><th></th></tr></thead><tbody>${linhas}</tbody></table>${!contas.length ? '<div class="empty"><div class="icon">◌</div>Nenhuma conta cadastrada.</div>' : ''}</div>`;
+  app.innerHTML = `<div class="toolbar"><div><h1>Contas</h1><p class="subtitle">Contas bancárias, cartões e investimentos.</p></div><div style="display:flex;gap:8px"><button class="button danger" id="excluir-todas" title="Excluir TODAS as contas (e lançamentos vinculados em cascata)" ${!contas.length ? 'style="display:none"' : ''}>🗑 Excluir todas (${contas.length})</button><button class="button" id="new">Nova conta</button></div></div><div class="panel"><table><thead><tr><th>Nome</th><th>Tipo</th><th>Saldo inicial</th><th></th></tr></thead><tbody>${linhas}</tbody></table>${!contas.length ? '<div class="empty"><div class="icon">◌</div>Nenhuma conta cadastrada.</div>' : ''}</div>`;
   $('#new').onclick = () => formConta();
   document.querySelectorAll('button[data-edit]').forEach(btn => btn.onclick = () => {
     const id = Number(btn.dataset.edit);
@@ -276,6 +276,23 @@ function renderContas() {
       }
     }
   });
+  const btnExcluirTodas = document.getElementById('excluir-todas');
+  if (btnExcluirTodas) btnExcluirTodas.onclick = () => {
+    if (!confirm(`Excluir TODAS as ${contas.length} contas deste contexto?\n\nSe houver lançamentos vinculados, será necessário confirmar o cascade por conta.\n\nEsta ação é IRREVERSÍVEL.`)) return;
+    if (!confirm(`Confirma: excluir ${contas.length} contas? (última chance)`)) return;
+    let ok = 0, falha = 0, ultimaMsg = '';
+    for (const c of [...contas]) {
+      try { api('contas:excluir', { id: c[0], cascade: true }); ok++; } catch (e) { falha++; ultimaMsg = e.message; }
+    }
+    if (ok && !falha) {
+      if (globalThis.toastOk) toastOk(`${ok} contas excluídas (com lançamentos vinculados).`);
+    } else if (ok && falha) {
+      if (globalThis.toastWarn) toastWarn(`${ok} ok, ${falha} falharam: ${ultimaMsg}. Algumas contas têm vínculos que não puderam ser apagados em cascata.`);
+    } else {
+      if (globalThis.toastErr) toastErr('Erro: ' + ultimaMsg);
+    }
+    renderContas();
+  };
 }
 
 function formConta(item) {
@@ -304,7 +321,7 @@ function renderCategorias() {
     const nome = String(r[2] || '').replace(/[<>&"']/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;' }[c]));
     return `<tr><td>${nome}</td><td>${r[3] || ''}</td><td><button class="button ghost" data-edit="${r[0]}">Editar</button> <button class="button danger" data-excluir="${r[0]}" data-nome="${nome}">Excluir</button></td></tr>`;
   }).join('') : '';
-  app.innerHTML = `<div class="toolbar"><div><h1>Categorias</h1><p class="subtitle">Classificação editável para este contexto.</p></div><button class="button" id="new">Nova categoria</button></div><div class="panel"><table><thead><tr><th>Nome</th><th>Natureza</th><th></th></tr></thead><tbody>${linhas}</tbody></table>${!categorias.length ? '<div class="empty"><div class="icon">◌</div>Nenhuma categoria cadastrada.</div>' : ''}</div>`;
+  app.innerHTML = `<div class="toolbar"><div><h1>Categorias</h1><p class="subtitle">Classificação editável para este contexto.</p></div><div style="display:flex;gap:8px"><button class="button danger" id="excluir-todas" title="Excluir TODAS as categorias (e lançamentos vinculados em cascata)" ${!categorias.length ? 'style="display:none"' : ''}>🗑 Excluir todas (${categorias.length})</button><button class="button" id="new">Nova categoria</button></div></div><div class="panel"><table><thead><tr><th>Nome</th><th>Natureza</th><th></th></tr></thead><tbody>${linhas}</tbody></table>${!categorias.length ? '<div class="empty"><div class="icon">◌</div>Nenhuma categoria cadastrada.</div>' : ''}</div>`;
   $('#new').onclick = () => formCategoria();
   document.querySelectorAll('button[data-edit]').forEach(btn => btn.onclick = () => {
     const id = Number(btn.dataset.edit);
@@ -329,6 +346,23 @@ function renderCategorias() {
       }
     }
   });
+  const btnExcluirTodas = document.getElementById('excluir-todas');
+  if (btnExcluirTodas) btnExcluirTodas.onclick = () => {
+    if (!confirm(`Excluir TODAS as ${categorias.length} categorias deste contexto?\n\nA categoria seed "Transferência interna" também será apagada (será recriada pelo resetar banco, mas não automaticamente aqui). Categorias com lançamentos vinculados serão apagadas EM CASCATA.\n\nEsta ação é IRREVERSÍVEL.`)) return;
+    if (!confirm(`Confirma: excluir ${categorias.length} categorias? (última chance)`)) return;
+    let ok = 0, falha = 0, ultimaMsg = '';
+    for (const c of [...categorias]) {
+      try { api('categorias:excluir', { id: c[0], cascade: true }); ok++; } catch (e) { falha++; ultimaMsg = e.message; }
+    }
+    if (ok && !falha) {
+      if (globalThis.toastOk) toastOk(`${ok} categorias excluídas (com lançamentos vinculados).`);
+    } else if (ok && falha) {
+      if (globalThis.toastWarn) toastWarn(`${ok} ok, ${falha} falharam.`);
+    } else {
+      if (globalThis.toastErr) toastErr('Erro: ' + ultimaMsg);
+    }
+    renderCategorias();
+  };
 }
 
 function formCategoria(item) {
@@ -393,9 +427,21 @@ function renderLancamentos() {
       <td>${acoes}</td>
     </tr>`;
   }).join('');
-  app.innerHTML = `<div class="toolbar"><div><h1>Lançamentos</h1><p class="subtitle">Receitas e despesas com rastreabilidade. Conciliados não podem ser editados nem excluídos — use estornar (cria lançamento inverso).</p></div><div style="display:flex;gap:8px"><button class="button secondary" id="transf">Transferir entre contas</button><button class="button" id="new">Novo lançamento</button></div></div><div class="panel"><table><thead><tr><th>Data</th><th>Descrição</th><th>Conta</th><th>Categoria</th><th>Cliente / Projeto</th><th>Natureza</th><th>Valor</th><th>Status</th><th>Ações</th></tr></thead><tbody>${linhas}</tbody></table>${!data.length ? '<div class="empty"><div class="icon">◌</div>Nenhum lançamento cadastrado.</div>' : ''}</div>`;
+  app.innerHTML = `<div class="toolbar"><div><h1>Lançamentos</h1><p class="subtitle">Receitas e despesas com rastreabilidade. Conciliados não podem ser editados nem excluídos — use estornar (cria lançamento inverso).</p></div><div style="display:flex;gap:8px"><button class="button secondary" id="transf">Transferir entre contas</button><button class="button danger" id="excluir-todos" title="Excluir TODOS os lançamentos deste contexto" ${!data.length ? 'style="display:none"' : ''}>🗑 Excluir todos (${data.length})</button><button class="button" id="new">Novo lançamento</button></div></div><div class="panel"><table><thead><tr><th>Data</th><th>Descrição</th><th>Conta</th><th>Categoria</th><th>Cliente / Projeto</th><th>Natureza</th><th>Valor</th><th>Status</th><th>Ações</th></tr></thead><tbody>${linhas}</tbody></table>${!data.length ? '<div class="empty"><div class="icon">◌</div>Nenhum lançamento cadastrado.</div>' : ''}</div>`;
   $('#new').onclick = () => formLancamento(clientes, projetos, centrosCusto);
   $('#transf').onclick = formTransferencia;
+  const btnExcluirTodos = document.getElementById('excluir-todos');
+  if (btnExcluirTodos) btnExcluirTodos.onclick = () => {
+    if (!confirm(`Excluir TODOS os ${data.length} lançamentos deste contexto?\n\nTambém apaga baixas e tags vinculadas. Cadastros (contas, categorias, clientes) permanecem.\n\nEsta ação é IRREVERSÍVEL.`)) return;
+    if (!confirm(`Confirma: apagar ${data.length} lançamentos? (última chance)`)) return;
+    try {
+      const r = api('lancamentos:excluirTodos', { contextoId });
+      if (globalThis.toastOk) toastOk(`${r.excluidos} lançamentos excluídos.`);
+      renderLancamentos();
+    } catch (e) {
+      if (globalThis.toastErr) toastErr('Erro: ' + e.message);
+    }
+  };
   // Handlers
   document.querySelectorAll('button[data-baixa]').forEach(btn => btn.onclick = () => formBaixa(Number(btn.dataset.baixa)));
   document.querySelectorAll('button[data-editar]').forEach(btn => btn.onclick = () => formEditarLancamento(Number(btn.dataset.editar), clientes, projetos, centrosCusto));
@@ -510,7 +556,7 @@ function renderTransferencias() {
     const valor = t[4];
     return `<tr><td>${data}</td><td>${origem}</td><td>${destino}</td><td>${money(valor)}</td><td><button class="button danger" data-excluir="${t[0]}">Excluir</button></td></tr>`;
   }).join('');
-  app.innerHTML = `<span class="eyebrow">CADASTROS</span><h1>Transferências</h1><p class="subtitle">Débitos e créditos vinculados entre contas do mesmo contexto. Excluir apenas desvincula os 2 lançamentos (eles permanecem). Use cascade se quiser apagar também.</p><div class="panel"><table><thead><tr><th>Data</th><th>Conta origem</th><th>Conta destino</th><th>Valor</th><th>Ação</th></tr></thead><tbody>${linhas}</tbody></table>${!transfs.length ? '<div class="empty"><div class="icon">◌</div>Nenhuma transferência. Cadastre via tela de Lançamentos > "Transferir entre contas".</div>' : ''}</div>`;
+  app.innerHTML = `<span class="eyebrow">CADASTROS</span><div class="toolbar"><div><h1>Transferências</h1><p class="subtitle">Débitos e créditos vinculados entre contas do mesmo contexto. Excluir apenas desvincula os 2 lançamentos (eles permanecem). Use cascade se quiser apagar também.</p></div><div style="display:flex;gap:8px"><button class="button danger" id="excluir-todos" title="Desvincular TODAS as transferências" ${!transfs.length ? 'style="display:none"' : ''}>🗑 Desvincular todas (${transfs.length})</button></div></div><div class="panel"><table><thead><tr><th>Data</th><th>Conta origem</th><th>Conta destino</th><th>Valor</th><th>Ação</th></tr></thead><tbody>${linhas}</tbody></table>${!transfs.length ? '<div class="empty"><div class="icon">◌</div>Nenhuma transferência. Cadastre via tela de Lançamentos > "Transferir entre contas".</div>' : ''}</div>`;
   document.querySelectorAll('button[data-excluir]').forEach(btn => btn.onclick = () => {
     const id = Number(btn.dataset.excluir);
     if (!confirm('Excluir esta transferência?\n\nPor padrão, apenas desvincula os 2 lançamentos (eles continuam existindo como lançamentos independentes). Clique OK e confirme o cascade para apagar TUDO.')) return;
@@ -528,13 +574,34 @@ function renderTransferencias() {
       }
     }
   });
+  const btnExcluirTodos = document.getElementById('excluir-todos');
+  if (btnExcluirTodos) btnExcluirTodos.onclick = () => {
+    if (!confirm(`Desvincular TODAS as ${transfs.length} transferências?\n\nOs 2 lançamentos de cada uma permanecem (viram lançamentos independentes). Cadastros preservados.\n\nEsta ação é IRREVERSÍVEL.`)) return;
+    if (!confirm(`Confirma: desvincular ${transfs.length} transferências?`)) return;
+    let ok = 0, falha = 0;
+    for (const t of transfs) {
+      try { api('transferencias:excluir', { id: t[0] }); ok++; } catch { falha++; }
+    }
+    if (globalThis.toastOk) toastOk(`${ok} transferências desvinculadas${falha ? `, ${falha} falharam` : ''}.`);
+    renderTransferencias();
+  };
 }
 
 function renderBaixas() {
   const data = api('lancamentos:listar', { contextoId });
   // Schema detalhado: 0=id 7=natureza 8=valor 9=data_competencia 11=desc 14=status
-  app.innerHTML = `<span class="eyebrow">FINANCEIRO</span><h1>Baixas e saldos em aberto</h1><p class="subtitle">Pagamentos parciais e totais. Não excede o valor original.</p><div class="panel"><table><thead><tr><th>Lançamento</th><th>Vencimento</th><th>Valor original</th><th>Saldo em aberto</th><th>Status</th><th>Ação</th></tr></thead><tbody>${data.map((l) => { const id = l[0]; const saldo = api('baixas:saldo', { lancamentoId: id }); const desc = String(l[11] || '').replace(/[<>&"']/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;' }[c])); return `<tr><td>${desc}</td><td>${l[9] || ''}</td><td>${money(l[8])}</td><td>${money(saldo)}</td><td>${l[14] || 'aberto'}</td><td><button class="button ghost" data-baixa="${id}">Lançar baixa</button></td></tr>`; }).join('')}</tbody></table>${!data.length ? '<div class="empty"><div class="icon">◌</div>Nenhum lançamento para dar baixa.</div>' : ''}</div>`;
+  app.innerHTML = `<span class="eyebrow">FINANCEIRO</span><div class="toolbar"><div><h1>Baixas e saldos em aberto</h1><p class="subtitle">Pagamentos parciais e totais. Não excede o valor original.</p></div><div style="display:flex;gap:8px"><button class="button danger" id="excluir-todos" title="Excluir TODOS os lançamentos" ${!data.length ? 'style="display:none"' : ''}>🗑 Excluir todos (${data.length})</button></div></div><div class="panel"><table><thead><tr><th>Lançamento</th><th>Vencimento</th><th>Valor original</th><th>Saldo em aberto</th><th>Status</th><th>Ação</th></tr></thead><tbody>${data.map((l) => { const id = l[0]; const saldo = api('baixas:saldo', { lancamentoId: id }); const desc = String(l[11] || '').replace(/[<>&"']/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;' }[c])); return `<tr><td>${desc}</td><td>${l[9] || ''}</td><td>${money(l[8])}</td><td>${money(saldo)}</td><td>${l[14] || 'aberto'}</td><td><button class="button ghost" data-baixa="${id}">Lançar baixa</button></td></tr>`; }).join('')}</tbody></table>${!data.length ? '<div class="empty"><div class="icon">◌</div>Nenhum lançamento para dar baixa.</div>' : ''}</div>`;
   document.querySelectorAll('button[data-baixa]').forEach(btn => btn.onclick = () => formBaixa(Number(btn.dataset.baixa)));
+  const btnExcluirTodos = document.getElementById('excluir-todos');
+  if (btnExcluirTodos) btnExcluirTodos.onclick = () => {
+    if (!confirm(`Excluir TODOS os ${data.length} lançamentos deste contexto?\n\nEsta ação é IRREVERSÍVEL.`)) return;
+    if (!confirm(`Confirma: apagar ${data.length} lançamentos? (última chance)`)) return;
+    try {
+      const r = api('lancamentos:excluirTodos', { contextoId });
+      if (globalThis.toastOk) toastOk(`${r.excluidos} lançamentos excluídos.`);
+      renderBaixas();
+    } catch (e) { if (globalThis.toastErr) toastErr('Erro: ' + e.message); }
+  };
 }
 
 boot().catch((e) => {
