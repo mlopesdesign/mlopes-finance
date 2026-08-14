@@ -12,7 +12,7 @@ import { renderFaturas } from './telas/faturas.js';
 import { renderCustosFixos } from './telas/custosFixos.js';
 import * as updUI from './update.js';
 
-const APP_VERSION = '0.10.0';
+const APP_VERSION = '0.10.1';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = []; let appDbPath = '';
 const $ = (s) => document.querySelector(s); const app = $('#app');
@@ -56,6 +56,36 @@ window.addEventListener('unhandledrejection', (ev) => {
 
 const money = (c) => (Number(c) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const escapeHtml = (s) => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+// v0.10.1: helpers de data em PT-BR. Storage continua ISO (YYYY-MM-DD no schema),
+// so a exibicao muda pra dd/mm/aaaa. Locale pt-BR ja vem setado no <html lang="pt-BR">.
+const fmtData = (iso) => {
+  if (!iso || typeof iso !== 'string' || !iso.includes('-')) return iso || '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+};
+const fmtDataCurta = (iso) => {
+  if (!iso || !iso.includes('-')) return iso || '';
+  const [, m, d] = iso.split('-');
+  return `${d}/${m}`;
+};
+const fmtMes = (iso) => {
+  if (!iso || !iso.includes('-')) return iso || '';
+  const [y, m] = iso.split('-');
+  return `${m}/${y}`;
+};
+const fmtDataHora = (iso) => {
+  if (!iso) return '';
+  // Aceita '2026-08-14T09:35:00Z' (com T) ou '2026-08-14 09:35:00' (com espaco)
+  const sep = iso.includes('T') ? 'T' : ' ';
+  const [dataParte, horaParte] = iso.split(sep);
+  const data = fmtData(dataParte);
+  if (!horaParte) return data;
+  // horaParte pode ser '09:35:00Z' ou '09:35:00'
+  const hhmm = horaParte.slice(0, 5);
+  return `${data} ${hhmm}`;
+};
+// Alias pt-BR pra usar em qualquer lugar
+const dataBR = fmtData;
 const rows = (data) => data.map((r) => `<tr>${r.map((v) => `<td>${String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;')}</td>`).join('')}</tr>`).join('');
 
 // Toast global (canto inferior direito, some sozinho).
@@ -254,11 +284,11 @@ function renderDashboard() {
   const totProjetos = api('projetos:listar', { contextoId }).length;
   const totCC = api('centros_custo:listar', { contextoId }).length;
   const totTags = api('tags:listar', { contextoId }).length;
-  // v0.10.0: saldos por conta + faturas dos cartoes
+  // v0.10.1: saldos por conta + faturas dos cartoes
   const saldosContas = api('dashboard:saldoPorConta', { contextoId });
   const cartoes = api('cartoes:listar', { contextoId });
   const faturasCartoes = cartoes.map(c => ({ cartao: c, faturaAtual: api('dashboard:faturaAtual', { cartaoId: c[0] }) }));
-  // v0.10.0: resumo de custos fixos do mes
+  // v0.10.1: resumo de custos fixos do mes
   const custosFixosResumo = api('custosFixos:resumoMes', { contextoId });
   // Separa contas por tipo (cartao nao mostra saldo — confunde)
   const contasBancarias = saldosContas.filter(c => c.tipo === 'bancaria' || c.tipo === 'investimento');
@@ -396,7 +426,7 @@ function renderDashboard() {
                   </div>
                   <div style="display:flex; justify-content:space-between;">
                     <span style="color:var(--muted);">Vence:</span>
-                    <span>${fatura.dataVencimento} (${fatura.status})</span>
+                    <span>${fmtData(fatura.dataVencimento)} (${fatura.status})</span>
                   </div>
                 </div>
               ` : '<div style="margin-top:8px; font-size:12px; color:var(--muted); font-style:italic;">Sem fatura aberta este mês</div>'}
@@ -599,7 +629,7 @@ function renderLancamentos() {
     }
     const statusPill = status === 'conciliado' ? '<span class="pill is-static" style="color:var(--positive)">Conciliado</span>' : '<span class="pill warn">Aberto</span>';
     return `<tr>
-      <td>${dataComp}</td>
+      <td>${fmtData(dataComp)}</td>
       <td><strong>${descricao}</strong></td>
       <td>${contaNome}</td>
       <td>${catNome}</td>
@@ -723,7 +753,7 @@ function formTransferencia() {
 function formBaixa(lancamentoId) {
   const saldo = api('baixas:saldo', { lancamentoId });
   const baixas = api('baixas:listar', { lancamentoId });
-  app.innerHTML = `<div class="panel"><h1>Baixas do lançamento #${lancamentoId}</h1><p class="subtitle">Saldo em aberto: <strong>${money(saldo)}</strong></p><form id="form-nova"><div class="form-grid"><label>Valor (R$)<input name="valor" inputmode="decimal" required value="${(saldo/100).toFixed(2)}"></label><label>Data<input type="date" name="data" required value="${new Date().toISOString().slice(0,10)}"></label><label>Forma<input name="forma" value="pix"></label><label>Observações<input name="obs"></label></div><div class="form-actions"><button type="button" class="button secondary" id="cancel">Cancelar</button><button class="button">Registrar baixa</button></div></form><table style="margin-top:16px"><thead><tr><th>Data</th><th>Valor</th><th>Forma</th><th>Obs</th></tr></thead><tbody>${baixas.map((b) => `<tr><td>${b[3]}</td><td>${money(b[2])}</td><td>${b[4]}</td><td>${b[5] || ''}</td></tr>`).join('')}</tbody></table></div>`;
+  app.innerHTML = `<div class="panel"><h1>Baixas do lançamento #${lancamentoId}</h1><p class="subtitle">Saldo em aberto: <strong>${money(saldo)}</strong></p><form id="form-nova"><div class="form-grid"><label>Valor (R$)<input name="valor" inputmode="decimal" required value="${(saldo/100).toFixed(2)}"></label><label>Data<input type="date" name="data" required value="${new Date().toISOString().slice(0,10)}"></label><label>Forma<input name="forma" value="pix"></label><label>Observações<input name="obs"></label></div><div class="form-actions"><button type="button" class="button secondary" id="cancel">Cancelar</button><button class="button">Registrar baixa</button></div></form><table style="margin-top:16px"><thead><tr><th>Data</th><th>Valor</th><th>Forma</th><th>Obs</th></tr></thead><tbody>${baixas.map((b) => `<tr><td>${fmtData(b[3])}</td><td>${money(b[2])}</td><td>${b[4]}</td><td>${b[5] || ''}</td></tr>`).join('')}</tbody></table></div>`;
   $('#cancel').onclick = renderLancamentos;
   $('#form-nova').onsubmit = (e) => { e.preventDefault(); const f = new FormData(e.target); try { api('baixas:registrar', { lancamentoId, valorCentavos: Math.round(Number(String(f.get('valor')).replace(',', '.')) * 100), dataBaixa: f.get('data'), formaPagamento: f.get('forma') || 'pix', observacoes: f.get('obs') || '' }); if (globalThis.toastOk) toastOk('Baixa registrada.'); renderLancamentos(); } catch (err) { if (globalThis.toastErr) toastErr('Erro: ' + err.message); } };
 }
@@ -737,7 +767,7 @@ function renderTransferencias() {
     const origem = t[7] || '—';
     const destino = t[8] || '—';
     const valor = t[4];
-    return `<tr><td>${data}</td><td>${origem}</td><td>${destino}</td><td>${money(valor)}</td><td><button class="button danger" data-excluir="${t[0]}">Excluir</button></td></tr>`;
+    return `<tr><td>${fmtData(data)}</td><td>${origem}</td><td>${destino}</td><td>${money(valor)}</td><td><button class="button danger" data-excluir="${t[0]}">Excluir</button></td></tr>`;
   }).join('');
   app.innerHTML = `<span class="eyebrow">CADASTROS</span><div class="toolbar"><div><h1>Transferências</h1><p class="subtitle">Débitos e créditos vinculados entre contas do mesmo contexto. Excluir apenas desvincula os 2 lançamentos (eles permanecem). Use cascade se quiser apagar também.</p></div><div style="display:flex;gap:8px"><button class="button danger" id="excluir-todos" title="Desvincular TODAS as transferências" ${!transfs.length ? 'style="display:none"' : ''}>🗑 Desvincular todas (${transfs.length})</button></div></div><div class="panel"><table><thead><tr><th>Data</th><th>Conta origem</th><th>Conta destino</th><th>Valor</th><th>Ação</th></tr></thead><tbody>${linhas}</tbody></table>${!transfs.length ? '<div class="empty"><div class="icon">◌</div>Nenhuma transferência. Cadastre via tela de Lançamentos > "Transferir entre contas".</div>' : ''}</div>`;
   document.querySelectorAll('button[data-excluir]').forEach(btn => btn.onclick = () => {
@@ -773,7 +803,7 @@ function renderTransferencias() {
 function renderBaixas() {
   const data = api('lancamentos:listar', { contextoId });
   // Schema detalhado: 0=id 7=natureza 8=valor 9=data_competencia 11=desc 14=status
-  app.innerHTML = `<span class="eyebrow">FINANCEIRO</span><div class="toolbar"><div><h1>Baixas e saldos em aberto</h1><p class="subtitle">Pagamentos parciais e totais. Não excede o valor original.</p></div><div style="display:flex;gap:8px"><button class="button danger" id="excluir-todos" title="Excluir TODOS os lançamentos" ${!data.length ? 'style="display:none"' : ''}>🗑 Excluir todos (${data.length})</button></div></div><div class="panel"><table><thead><tr><th>Lançamento</th><th>Vencimento</th><th>Valor original</th><th>Saldo em aberto</th><th>Status</th><th>Ação</th></tr></thead><tbody>${data.map((l) => { const id = l[0]; const saldo = api('baixas:saldo', { lancamentoId: id }); const desc = String(l[11] || '').replace(/[<>&"']/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;' }[c])); return `<tr><td>${desc}</td><td>${l[9] || ''}</td><td>${money(l[8])}</td><td>${money(saldo)}</td><td>${l[14] || 'aberto'}</td><td><button class="button ghost" data-baixa="${id}">Lançar baixa</button></td></tr>`; }).join('')}</tbody></table>${!data.length ? '<div class="empty"><div class="icon">◌</div>Nenhum lançamento para dar baixa.</div>' : ''}</div>`;
+  app.innerHTML = `<span class="eyebrow">FINANCEIRO</span><div class="toolbar"><div><h1>Baixas e saldos em aberto</h1><p class="subtitle">Pagamentos parciais e totais. Não excede o valor original.</p></div><div style="display:flex;gap:8px"><button class="button danger" id="excluir-todos" title="Excluir TODOS os lançamentos" ${!data.length ? 'style="display:none"' : ''}>🗑 Excluir todos (${data.length})</button></div></div><div class="panel"><table><thead><tr><th>Lançamento</th><th>Vencimento</th><th>Valor original</th><th>Saldo em aberto</th><th>Status</th><th>Ação</th></tr></thead><tbody>${data.map((l) => { const id = l[0]; const saldo = api('baixas:saldo', { lancamentoId: id }); const desc = String(l[11] || '').replace(/[<>&"']/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;' }[c])); return `<tr><td>${desc}</td><td>${fmtData(l[9]) || '—'}</td><td>${money(l[8])}</td><td>${money(saldo)}</td><td>${l[14] || 'aberto'}</td><td><button class="button ghost" data-baixa="${id}">Lançar baixa</button></td></tr>`; }).join('')}</tbody></table>${!data.length ? '<div class="empty"><div class="icon">◌</div>Nenhum lançamento para dar baixa.</div>' : ''}</div>`;
   document.querySelectorAll('button[data-baixa]').forEach(btn => btn.onclick = () => formBaixa(Number(btn.dataset.baixa)));
   const btnExcluirTodos = document.getElementById('excluir-todos');
   if (btnExcluirTodos) btnExcluirTodos.onclick = () => {

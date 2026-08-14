@@ -297,7 +297,7 @@ function renderHistorico() {
       <td>${r[5]}</td>
       <td>${r[6]}</td>
       <td><span class="${statusClass}">${r[7]}</span></td>
-      <td>${String(r[9] || '').replace('T', ' ').substring(0, 19)}</td>
+      <td>${fmtDataHora(String(r[9] || ''))}</td>
       <td>
         ${reciclaveis > 0 ? `<button class="button ghost small" data-reciclar="${r[0]}" title="Marcar ${reciclaveis} item(ns) ignorado/duplicado como pendente para confirmar de novo">♻ Reciclar ${reciclaveis}</button> ` : ''}
         ${importacoes ? `<button class="button ghost small danger" data-excluir-lanc="${r[0]}" title="Excluir os ${r[6]} lançamentos desta importação (bloqueia se algum estiver conciliado)">Excluir ${r[6]} lanç.</button> ` : ''}
@@ -365,5 +365,21 @@ function formatBytes(n) {
 }
 
 function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function fmtData(iso) {
+  if (!iso || !iso.includes('-')) return iso || '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function fmtDataHora(iso) {
+  if (!iso) return '';
+  const sep = iso.includes('T') ? 'T' : ' ';
+  const [dataParte, horaParte] = iso.split(sep);
+  const data = fmtData(dataParte);
+  if (!horaParte) return data;
+  return `${data} ${horaParte.slice(0, 5)}`;
+}
+function _escapeHtmlOld(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

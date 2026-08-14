@@ -65,8 +65,8 @@ export function renderFaturas(contextoId, api, cartaoFiltro = null) {
                 return `
                   <tr>
                     <td><strong>${ciclo}</strong></td>
-                    <td>${dataF}</td>
-                    <td>${dataV}</td>
+                    <td>${fmtData(dataF)}</td>
+                    <td>${fmtData(dataV)}</td>
                     <td style="text-align:right;">${qtd}</td>
                     <td style="text-align:right;">${totalFmt}</td>
                     <td style="text-align:right;">${pagoFmt}</td>
@@ -137,7 +137,7 @@ function verLancamentosFatura(faturaId, ciclo, cartaoNome, contasBancarias) {
               const [id, , , , , valor, data, , desc, , status, , cat] = l;
               const valorFmt = (Number(valor) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
               return `<tr>
-                <td>${data}</td>
+                <td>${fmtData(data)}</td>
                 <td>${escapeHtml(String(desc || ''))}</td>
                 <td>${escapeHtml(cat || '—')}</td>
                 <td style="text-align:right;">${valorFmt}</td>

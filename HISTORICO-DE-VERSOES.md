@@ -1,4 +1,4 @@
-## 0.10.0 — Motor Financeiro (Custos Fixos + Relatórios Avançados)
+## 0.10.1 — Motor Financeiro (Custos Fixos + Relatórios Avançados)
 
 - **Motivação do user**: "preciso de um motor que controle, que me apresente os resumos, gasto total por mês, por ano, total de prestações a vencer, por mês, resumos, enfim, tudo que um programa desses deveria ter, não quero um programa que mostre, quero que seja funcional". Backend já tinha `core/recorrencias.js` mas era genérico (exigia 2 passos: criar template + criar recorrencia). Backend de relatórios tinha `balancete` e `comparativo` mas faltava o "motor" (gastos por mês, top categorias, top despesas, variação mensal, alertas).
 - **Tela de Custos Fixos** (nova, na sidebar): interface simples pra cadastrar aluguel, internet, luz, etc. — com descrição, valor mensal, dia do mês, conta/cartão de pagamento, categoria. Sistema gera os lançamentos automaticamente todo mês. Botão "⚡ Gerar 2026-09" gera os lançamentos do mês atual que ainda não foram criados.
@@ -15,7 +15,7 @@
   - `exportarMovimentosCSV(db, contextoId, inicio, fim)` — CSV detalhado com TODOS os lançamentos do período (não só o balancete).
 - **8 novas rotas no servidor** (`servidor.js`): `relatorios:gastosPorMes`, `:topCategorias`, `:topDespesas`, `:gastosPorConta`, `:faturasAVencer`, `:variacaoMensal`, `:alertas`, `:exportarMovimentosCSV`. + 7 rotas de `custosFixos:*` (criar, listar, totalMes, resumoMes, gerarMesAtual, alternar, excluir).
 - **13 testes novos** (118/118 verde): 7 de custos fixos (criar template+recorrencia, total mensal só ativos, gerar mes atual idempotente, resumo com flag gerado, excluir sem cascade pausa, excluir com cascade apaga template+recorrencia, rejeita diaDoMes 0/32) + 6 de relatórios avançados (gastosPorMes preenche gaps, topCategorias ordena por total e calcula percentual, topDespesas retorna top N, variacaoMensal calcula delta %, alertas detecta fatura próxima, exportarMovimentosCSV gera CSV com header).
-- **Bump v0.9.1 → v0.10.0** (6 lugares). Bundle 6.09 MB. Auto-update já programado.
+- **Bump v0.9.1 → v0.10.1** (6 lugares). Bundle 6.09 MB. Auto-update já programado.
 - **Motivação do user** (gravado pra nunca repetir): "não quero um programa que mostre, quero que seja funcional". User quer SOFTWARE funcional (gera, calcula, alerta, lembra), não só visualização. Sempre que o user pedir "resumo" ou "motor", pensar em: agregação, comparação temporal, alertas proativos, geração automática de dados (recorrências, parcelamentos).
 
 ## 
