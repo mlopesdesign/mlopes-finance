@@ -1,6 +1,6 @@
 # GRAPHIFY — Mapa técnico do MLopes Finance
 
-> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-14T01:47:51.804Z.
+> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-14T02:46:39.801Z.
 > Não editar manualmente. Fonte da verdade: `src/` e `tools/`.
 
 ## Resumo
@@ -60,7 +60,7 @@ MLopes Finance — backend de configurações
 
 MLopes Finance — importacao de extratos OFX e CSV
 
-**Exports:** `parsearOFX`, `parsearCSV`, `criarPreviaImportacao`, `confirmarImportacao`, `listarImportacoes`, `cancelarImportacao`, `excluirImportacao`, `excluirLancamentosImportacao`
+**Exports:** `parsearOFX`, `parsearCSV`, `criarPreviaImportacao`, `inferirNaturezaItem`, `confirmarImportacao`, `listarImportacoes`, `cancelarImportacao`, `excluirImportacao`, `excluirLancamentosImportacao`
 
 **Imports:** criarLancamento ← `./lancamentos.js`
 

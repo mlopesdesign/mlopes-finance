@@ -1,4 +1,17 @@
 
+## 0.8.19 — Inferência automática de natureza na importação
+
+- **Motivação do user**: "ele tem que achar sozinho". O dropdown "Natureza padrão (quando ambíguo)" era confuso. O app deve inferir automaticamente se cada transação é receita ou despesa.
+- **Heurísticas** (em `core/importacao.js::inferirNaturezaItem`):
+  1. **Tipo da conta** — cartão de crédito = SEMPRE despesa (mesmo valor positivo, mesmo com "RECEBIDO" na descrição).
+  2. **Palavras-chave na descrição** — despesa: BOLETO, COMPRA, PAGAMENTO, DÉBITO, TARIFA, IOF, JUROS, MULTA, ANUIDADE, MENSALIDADE, SAQUE. Receita: RECEBIDO, CRED, PIX RECEBIDO, TRANSF RECEB, DEPÓSITO, SALÁRIO, RENDIMENTO, ALUGUEL RECEB, TED RECEB, DOC RECEB.
+  3. **Sinal do valor** — negativo = despesa.
+  4. **Fallback** — `padraoNatureza` (default 'despesa').
+- **`confirmarImportacao` agora retorna inferências por item** (`inferencias: [{itemId, natureza, motivo}]`) para a UI mostrar ao user o que inferiu.
+- **UI** (`telas/importacao.js`): dropdown "Natureza padrão (quando ambíguo)" **REMOVIDO**. Resultado mostra resumo: "Inferido: N despesa, M receita (palavras-chave + tipo da conta)".
+- **7 testes novos** (85/85 verde): cartão sempre despesa, keywords de despesa/receita, valor negativo = despesa, valor positivo sem keyword = padrão, `confirmarImportacao` retorna inferências com motivos diferentes, cartão sobrescreve keyword de receita.
+- **Bump v0.8.18 → v0.8.19** (7 lugares). Bundle v0.8.19 (5.72 MB, SHA `BD4B5C2E…E5`, EXE FileVersion `0.8.19.0`) instalado na máquina do Marcio, backup v0.8.18 preservado.
+
 ## 0.8.18 — Fix dedup de duplicatas internas na importação de extrato
 
 - **Bug reportado pelo Marcio**: importação de extrato do Santander (CSV) dava erro `UNIQUE constraint failed: itens_importacao.importacao_id, itens_importacao.chave_externa` na prévia. Causa: o extrato do banco tinha 2 linhas idênticas (mesma data+valor+descrição = mesma `chave_externa`), e o `INSERT` direto batia no `UNIQUE(importacao_id, chave_externa)`.
