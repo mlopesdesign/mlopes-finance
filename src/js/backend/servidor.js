@@ -1,4 +1,4 @@
-import { criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto, atualizarConta, atualizarCategoria, excluirContexto, excluirConta, excluirCategoria } from './core/financeiro.js';
+import { criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto, atualizarConta, atualizarCategoria, excluirContexto, excluirConta, excluirCategoria, saldoPorConta } from './core/financeiro.js';
 import { conciliarLancamento, criarLancamento, resumo, excluirLancamento, excluirTodosLancamentos, estornarLancamento, editarLancamento, listarLancamentos, listarLancamentosDetalhados, obterLancamento } from './core/lancamentos.js';
 import { getAllConfig, getConfig, setConfig, deleteConfig, resetConfig } from './core/configuracoes.js';
 import { criarBackup, radiografar, restaurarBackup, validarCiclo, resetarBanco } from './core/backup.js';
@@ -6,7 +6,7 @@ import { criarCliente, listarClientes, atualizarCliente, criarFornecedor, listar
 import { criarTransferencia, listarTransferencias, excluirTransferencia } from './core/transferencias.js';
 import { registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa } from './core/baixas.js';
 import { criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias, excluirRecorrencia, desativarRecorrencia } from './core/recorrencias.js';
-import { criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura, atualizarCartao, excluirCartao, listarFaturasDetalhadas, listarLancamentosDaFatura, calcularCicloDaCompra } from './core/cartoes.js';
+import { criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura, atualizarCartao, excluirCartao, listarFaturasDetalhadas, listarLancamentosDaFatura, calcularCicloDaCompra, faturaAtualDoCartao } from './core/cartoes.js';
 import { criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao } from './core/importacao.js';
 import { balancete, comparativo, exportaCSV } from './core/relatorios.js';
 import { compararVersao } from './core/update.js';
@@ -39,6 +39,8 @@ export function criarApi(db, persistir = () => {}) {
     'lancamentos:estornar': (d) => { const r = estornarLancamento(db, d.id, d.dataEstorno); persistir(); return r; },
     'lancamentos:editar': (d) => { const r = editarLancamento(db, d.id, d.campos); persistir(); return r; },
     'dashboard:resumo': (d) => resumo(db, d.contextoId),
+    'dashboard:saldoPorConta': (d) => saldoPorConta(db, d.contextoId),
+    'dashboard:faturaAtual': (d) => faturaAtualDoCartao(db, d.cartaoId),
 
     // Configuracoes
     'configuracoes:listar': () => getAllConfig(db),

@@ -14,11 +14,11 @@ import { criarCliente, listarClientes, atualizarCliente, criarFornecedor, criarP
 import { criarTransferencia, listarTransferencias } from '../src/js/backend/core/transferencias.js';
 import { registrarBaixa, saldoEmAberto, listarBaixas } from '../src/js/backend/core/baixas.js';
 import { criarRecorrencia, gerarProximaOcorrencia } from '../src/js/backend/core/recorrencias.js';
-import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas, atualizarCartao, excluirCartao, calcularCicloDaCompra, listarFaturasDetalhadas, listarLancamentosDaFatura } from '../src/js/backend/core/cartoes.js';
+import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas, atualizarCartao, excluirCartao, calcularCicloDaCompra, listarFaturasDetalhadas, listarLancamentosDaFatura, faturaAtualDoCartao } from '../src/js/backend/core/cartoes.js';
 import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, inferirNaturezaItem, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao } from '../src/js/backend/core/importacao.js';
 import { balancete, comparativo, exportaCSV, calcularPeriodo } from '../src/js/backend/core/relatorios.js';
 import { aplicarAtualizacao, pathCacheWebView2Async, invalidarCacheWebView2 } from '../src/js/backend/update.js';
-import { excluirContexto, excluirConta, excluirCategoria } from '../src/js/backend/core/financeiro.js';
+import { excluirContexto, excluirConta, excluirCategoria, saldoPorConta } from '../src/js/backend/core/financeiro.js';
 import { excluirCliente, excluirFornecedor, excluirProjeto, excluirCentroCusto, excluirTag, desvincularTagLancamento } from '../src/js/backend/core/cadastros.js';
 import { excluirRecorrencia, desativarRecorrencia } from '../src/js/backend/core/recorrencias.js';
 import { excluirTransferencia } from '../src/js/backend/core/transferencias.js';
@@ -1216,14 +1216,15 @@ test('listarLancamentos: retorna ordenado por data desc, exclui estornados por p
   const l2 = criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 200, dataCompetencia: '2026-08-15', descricao: 'B' });
   const l3 = criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 300, dataCompetencia: '2026-08-10', descricao: 'C' });
   const r = estornarLancamento(db, l3);
-  // Apos estornar l3, existe o lancamento inverso (id = r.idEstorno) com status 'aberto'.
-  // listarLancamentos (padrao) deve mostrar: l2, l3_estorno, l1 (3 itens), SEM l3 original.
+  // v0.9.0: o estorno cria 1 lancamento inverso com status='estornado' (assim o
+  // saldo nao muda). listarLancamentos (padrao) exclui estornados, entao so
+  // aparecem l1 e l2 (2 itens). l3 e o inverso (idEstorno) ficam invisiveis
+  // ate chamar com { incluirEstornados: true }.
   const todos = listarLancamentos(db, cid);
-  assert.equal(todos.length, 3, 'l3 original (estornado) nao aparece; l3_estorno + l1 + l2 = 3');
+  assert.equal(todos.length, 2, 'padrao exclui l3 e o estorno (ambos estornados). sobrou l1 + l2 = 2');
   const ids = todos.map((r) => r[0]);
   assert.ok(!ids.includes(l3), 'l3 original nao aparece');
-  assert.ok(ids.includes(r.idEstorno), 'l3_estorno aparece');
-  // Ordem por data desc: B (2026-08-15) > estorno (2026-08-10) > A (2026-08-01)
+  assert.ok(!ids.includes(r.idEstorno), 'l3_estorno nao aparece (v0.9.0: zera saldo, vai pra status estornado)');
   // incluirEstornados: true mostra TUDO (4: l1, l2, l3, l3_estorno)
   const comEstornados = listarLancamentos(db, cid, { incluirEstornados: true });
   assert.equal(comEstornados.length, 4);
@@ -1786,4 +1787,69 @@ test('cartoes: calcularCicloDaCompra calcula ciclo e datas corretamente', async 
   // Compra em 31/12 (depois do fechamento) com virada de ano
   const c3 = calcularCicloDaCompra(db, { cartaoId: r.cartaoId, dataCompra: '2026-12-31' });
   assert.equal(c3.ciclo, '2027-01');
+});
+
+// --- v0.9.0: Dashboard (saldo por conta + fatura atual do cartao) ---
+
+test('dashboard: saldoPorConta soma receitas/transferencias e subtrai despesas por conta', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const c1 = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria', saldoInicialCentavos: 100000 });
+  const c2 = criarConta(db, { contextoId: cid, nome: 'Itau', tipo: 'bancaria', saldoInicialCentavos: 50000 });
+  // c1: +50000 receita, -30000 despesa → saldo 120000
+  criarLancamento(db, { contextoId: cid, contaId: c1, natureza: 'receita', valorCentavos: 50000, dataCompetencia: '2026-08-01', descricao: 'Salario' });
+  criarLancamento(db, { contextoId: cid, contaId: c1, natureza: 'despesa', valorCentavos: 30000, dataCompetencia: '2026-08-02', descricao: 'Mercado' });
+  // c2: sem lancamento → saldo = 50000 (inicial)
+  const saldos = saldoPorConta(db, cid);
+  assert.equal(saldos.length, 2);
+  const s1 = saldos.find(s => s.id === c1);
+  const s2 = saldos.find(s => s.id === c2);
+  assert.equal(s1.saldoAtualCentavos, 120000, 'c1: 100000 (ini) + 50000 (rec) - 30000 (desp) = 120000');
+  assert.equal(s2.saldoAtualCentavos, 50000, 'c2: sem lancamento, saldo = inicial');
+  assert.equal(s1.qtdLancamentos, 2);
+  assert.equal(s2.qtdLancamentos, 0);
+});
+
+test('dashboard: saldoPorConta transfere corretamente entre contas (orig -X, dest +X)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const c1 = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria', saldoInicialCentavos: 100000 });
+  const c2 = criarConta(db, { contextoId: cid, nome: 'Itau', tipo: 'bancaria', saldoInicialCentavos: 0 });
+  criarTransferencia(db, { contextoId: cid, contaOrigemId: c1, contaDestinoId: c2, valorCentavos: 30000, dataCompetencia: '2026-08-01', descricao: 'Pix' });
+  const saldos = saldoPorConta(db, cid);
+  const s1 = saldos.find(s => s.id === c1);
+  const s2 = saldos.find(s => s.id === c2);
+  assert.equal(s1.saldoAtualCentavos, 70000, 'c1: 100000 - 30000 (transf saida) = 70000');
+  assert.equal(s2.saldoAtualCentavos, 30000, 'c2: 0 + 30000 (transf entrada) = 30000');
+  // Total: 70000 + 30000 = 100000 (consistente com saldo inicial total)
+  assert.equal(s1.saldoAtualCentavos + s2.saldoAtualCentavos, 100000);
+});
+
+test('dashboard: saldoPorConta ignora lancamentos estornados', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const c1 = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria', saldoInicialCentavos: 100000 });
+  const l1 = criarLancamento(db, { contextoId: cid, contaId: c1, natureza: 'despesa', valorCentavos: 50000, dataCompetencia: '2026-08-01', descricao: 'X' });
+  // Estornar
+  estornarLancamento(db, l1);
+  const saldos = saldoPorConta(db, cid);
+  assert.equal(saldos[0].saldoAtualCentavos, 100000, 'despesa estornada nao conta');
+});
+
+test('dashboard: faturaAtualDoCartao retorna fatura aberta/fechada mais proxima', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  const r = criarCartao(db, { contextoId: cid, nome: 'Nubank', limiteCentavos: 100000, diaFechamento: 5, diaVencimento: 15, contaPagamentoId: cb });
+  // Sem fatura ainda
+  const f0 = faturaAtualDoCartao(db, r.cartaoId);
+  assert.equal(f0.fatura, null, 'sem fatura aberta');
+  assert.equal(f0.limiteCentavos, 100000);
+  // Cria fatura manual
+  const hoje = new Date();
+  const cicloAtual = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+  abrirFatura(db, { cartaoId: r.cartaoId, ciclo: cicloAtual, dataFechamento: `${cicloAtual}-05`, dataVencimento: '2026-09-15' });
+  const f1 = faturaAtualDoCartao(db, r.cartaoId);
+  assert.ok(f1.fatura, 'fatura do ciclo atual');
+  assert.equal(f1.fatura.ciclo, cicloAtual);
 });

@@ -2,9 +2,10 @@ import { validarData, validarValorCentavos } from './financeiro.js';
 import { calcularCicloDaCompra, abrirFatura } from './cartoes.js';
 
 export function criarLancamento(db, input, agora = new Date().toISOString()) {
-  let { contextoId, contaId, categoriaId = null, clienteId = null, projetoId = null, centroCustoId = null, natureza, valorCentavos, dataCompetencia, descricao, observacoes = '', cartaoId = null, faturaId = null } = input;
+  let { contextoId, contaId, categoriaId = null, clienteId = null, projetoId = null, centroCustoId = null, natureza, valorCentavos, dataCompetencia, descricao, observacoes = '', cartaoId = null, faturaId = null, status = 'aberto' } = input;
   if (!Number.isInteger(contextoId) || !Number.isInteger(contaId)) throw new Error('Contexto e conta são obrigatórios.');
   if (!['receita', 'despesa'].includes(natureza)) throw new Error('Natureza deve ser receita ou despesa.');
+  if (!['aberto', 'conciliado', 'estornado'].includes(status)) throw new Error('Status invalido.');
   validarValorCentavos(valorCentavos); validarData(dataCompetencia);
   if (!descricao?.trim()) throw new Error('Descrição é obrigatória.');
   // v0.9.0: se a conta e' tipo 'cartao' e o user NAO passou cartaoId/faturaId
@@ -23,7 +24,7 @@ export function criarLancamento(db, input, agora = new Date().toISOString()) {
     }
   }
   db.run(`INSERT INTO lancamentos (contexto_id, conta_id, categoria_id, cliente_id, projeto_id, centro_custo_id, natureza, valor_centavos, data_competencia, descricao, observacoes, cartao_id, fatura_id, status, criado_em)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aberto', ?)`, [contextoId, contaId, categoriaId, clienteId, projetoId, centroCustoId, natureza, valorCentavos, dataCompetencia, descricao.trim(), observacoes.trim(), cartaoId, faturaId, agora]);
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [contextoId, contaId, categoriaId, clienteId, projetoId, centroCustoId, natureza, valorCentavos, dataCompetencia, descricao.trim(), observacoes.trim(), cartaoId, faturaId, status, agora]);
   const id = db.exec('SELECT last_insert_rowid() AS id')[0].values[0][0];
   // v0.9.0: atualiza valor_total_centavos da fatura (soma os lancamentos vinculados)
   if (faturaId != null) {
@@ -95,7 +96,8 @@ export function excluirLancamento(db, id, agora = new Date().toISOString()) {
 
 /**
  * Estorna um lancamento criando um lancamento inverso (mesmo valor, natureza oposta).
- * O lancamento original e' marcado como 'estornado'. Mantem o historico (auditoria).
+ * O lancamento original E o inverso ficam com status='estornado' (assim o saldo
+ * nao muda — os 2 sao ignorados pela query de saldo). Mantem o historico (auditoria).
  * Usado para corrigir lancamentos CONCILIADOS (regra do PADRAO).
  */
 export function estornarLancamento(db, id, dataEstorno = null, agora = new Date().toISOString()) {
@@ -110,13 +112,16 @@ export function estornarLancamento(db, id, dataEstorno = null, agora = new Date(
   const dataEst = dataEstorno || new Date().toISOString().slice(0, 10);
   db.run('BEGIN');
   try {
-    // Cria o lancamento inverso
+    // Cria o lancamento inverso com status='estornado' direto (assim o saldo nao
+    // muda — os 2 lancamentos ficam invisiveis pro calculo de saldo, mas aparecem
+    // na auditoria e na lista de "incluir estornados")
     const idEstorno = criarLancamento(db, {
       contextoId, contaId, categoriaId, clienteId, projetoId, centroCustoId,
       natureza: naturezaInversa, valorCentavos: Number(valorCentavos),
       dataCompetencia: dataEst,
       descricao: `ESTORNO de #${id}: ${descricao}`,
       observacoes: observacoes || `Estorno automatico do lancamento #${id}.`,
+      status: 'estornado',
     }, agora);
     // Marca o original como estornado
     db.run("UPDATE lancamentos SET status = 'estornado', atualizado_em = ? WHERE id = ?", [agora, id]);

@@ -11,7 +11,7 @@ import { renderCartoes } from './telas/cartoes.js';
 import { renderFaturas } from './telas/faturas.js';
 import * as updUI from './update.js';
 
-const APP_VERSION = '0.9.0';
+const APP_VERSION = '0.9.1';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = []; let appDbPath = '';
 const $ = (s) => document.querySelector(s); const app = $('#app');
@@ -54,6 +54,7 @@ window.addEventListener('unhandledrejection', (ev) => {
 });
 
 const money = (c) => (Number(c) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const escapeHtml = (s) => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 const rows = (data) => data.map((r) => `<tr>${r.map((v) => `<td>${String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;')}</td>`).join('')}</tr>`).join('');
 
 // Toast global (canto inferior direito, some sozinho).
@@ -251,7 +252,130 @@ function renderDashboard() {
   const totProjetos = api('projetos:listar', { contextoId }).length;
   const totCC = api('centros_custo:listar', { contextoId }).length;
   const totTags = api('tags:listar', { contextoId }).length;
-  app.innerHTML = `<span class="eyebrow">VISÃO GERAL</span><h1>Seu dinheiro, no seu <em>ritmo</em>.</h1><p class="subtitle">Acompanhe o movimento do contexto financeiro selecionado.</p><div class="cards"><div class="card"><span class="card-label">Receitas</span><span class="card-value positive">${money(s.receitas)}</span><span class="card-sub">no período</span></div><div class="card"><span class="card-label">Despesas</span><span class="card-value negative">${money(s.despesas)}</span><span class="card-sub">no período</span></div><div class="card"><span class="card-label">Saldo</span><span class="card-value">${money(s.saldo)}</span><span class="card-sub">resultado</span></div><div class="card"><span class="card-label">Contas</span><span class="card-value">${api('contas:listar', { contextoId }).length}</span><span class="card-sub">cadastradas</span></div></div><div class="cards"><div class="card"><span class="card-label">Clientes</span><span class="card-value">${totClientes}</span><span class="card-sub">cadastrados</span></div><div class="card"><span class="card-label">Projetos</span><span class="card-value">${totProjetos}</span><span class="card-sub">vinculáveis</span></div><div class="card"><span class="card-label">Centros de custo</span><span class="card-value">${totCC}</span><span class="card-sub">apoiados</span></div><div class="card"><span class="card-label">Tags</span><span class="card-value">${totTags}</span><span class="card-sub">livres</span></div></div><div class="panel"><h2>Próximo passo</h2><p style="color: var(--muted); margin: 0;">Cadastre uma conta e registre seu primeiro lançamento. Os dados ficam no banco local desta instalação.</p></div>`;
+  // v0.9.1: saldos por conta + faturas dos cartoes
+  const saldosContas = api('dashboard:saldoPorConta', { contextoId });
+  const cartoes = api('cartoes:listar', { contextoId });
+  const faturasCartoes = cartoes.map(c => ({ cartao: c, faturaAtual: api('dashboard:faturaAtual', { cartaoId: c[0] }) }));
+  // Separa contas por tipo (cartao nao mostra saldo — confunde)
+  const contasBancarias = saldosContas.filter(c => c.tipo === 'bancaria' || c.tipo === 'investimento');
+  const contasCartao = saldosContas.filter(c => c.tipo === 'cartao');
+  const fmtTipo = (t) => t === 'bancaria' ? 'Conta' : t === 'investimento' ? 'Investimento' : t === 'cartao' ? 'Cartão' : t;
+  app.innerHTML = `
+    <span class="eyebrow">VISÃO GERAL</span>
+    <h1>Seu dinheiro, no seu <em>ritmo</em>.</h1>
+    <p class="subtitle">Acompanhe o movimento do contexto financeiro selecionado. Saldos e faturas separados por origem.</p>
+
+    <div class="cards">
+      <div class="card"><span class="card-label">Receitas</span><span class="card-value positive">${money(s.receitas)}</span><span class="card-sub">no período</span></div>
+      <div class="card"><span class="card-label">Despesas</span><span class="card-value negative">${money(s.despesas)}</span><span class="card-sub">no período</span></div>
+      <div class="card"><span class="card-label">Saldo</span><span class="card-value">${money(s.saldo)}</span><span class="card-sub">resultado</span></div>
+      <div class="card"><span class="card-label">Lançamentos</span><span class="card-value">${s.lancamentos}</span><span class="card-sub">no contexto</span></div>
+    </div>
+
+    <div class="panel">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h2>💰 Suas contas (${contasBancarias.length})</h2>
+        <button class="button ghost small" data-nav="contas">Gerenciar contas</button>
+      </div>
+      ${contasBancarias.length === 0 ? '<div class="empty">Nenhuma conta bancária ou investimento cadastrada. Vá em <strong>Contas</strong> na sidebar para começar.</div>' : `
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr><th>Conta</th><th>Tipo</th><th style="text-align:right;">Saldo inicial</th><th style="text-align:right;">Lançamentos</th><th style="text-align:right;">Saldo atual</th></tr>
+          </thead>
+          <tbody>
+            ${contasBancarias.map(c => {
+              const saldoCor = c.saldoAtualCentavos >= 0 ? 'var(--positive)' : 'var(--negative)';
+              return `<tr>
+                <td><strong>${escapeHtml(c.nome)}</strong></td>
+                <td><span class="pill is-static">${fmtTipo(c.tipo)}</span></td>
+                <td style="text-align:right; color: var(--muted);">${money(c.saldoInicialCentavos)}</td>
+                <td style="text-align:right; color: var(--muted);">${c.qtdLancamentos}</td>
+                <td style="text-align:right; font-weight:600; color: ${saldoCor};">${money(c.saldoAtualCentavos)}</td>
+              </tr>`;
+            }).join('')}
+            ${contasBancarias.length > 1 ? `<tr style="border-top: 2px solid var(--brand);"><td colspan="4" style="text-align:right; font-weight:600; padding-top:8px;">Total</td><td style="text-align:right; font-weight:600; color: ${contasBancarias.reduce((s, c) => s + c.saldoAtualCentavos, 0) >= 0 ? 'var(--positive)' : 'var(--negative)'}; padding-top:8px;">${money(contasBancarias.reduce((s, c) => s + c.saldoAtualCentavos, 0))}</td></tr>` : ''}
+          </tbody>
+        </table>
+      </div>
+      `}
+    </div>
+
+    <div class="panel">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h2>💳 Cartões de crédito (${cartoes.length})</h2>
+        <button class="button ghost small" data-nav="cartoes">Gerenciar cartões</button>
+      </div>
+      ${cartoes.length === 0 ? '<div class="empty">Nenhum cartão cadastrado. Vá em <strong>Cartões</strong> na sidebar para cadastrar.</div>' : `
+      <div class="cards">
+        ${faturasCartoes.map(({ cartao, faturaAtual }) => {
+          // cartao: 0:id, 2:nome, 3:instituicao, 4:limite_centavos, 5:dia_fechamento, 6:dia_vencimento
+          const limite = Number(cartao[4]);
+          const fatura = faturaAtual?.fatura;
+          const total = fatura?.totalCentavos || 0;
+          const pago = fatura?.pagoCentavos || 0;
+          const restante = fatura?.restanteCentavos || 0;
+          const disponivel = limite - total > 0 ? limite - total : 0;
+          const usoPct = limite > 0 ? Math.min(100, Math.round((total / limite) * 100)) : 0;
+          const cor = usoPct > 80 ? 'var(--negative)' : usoPct > 50 ? 'var(--warn)' : 'var(--positive)';
+          return `
+            <div class="card cartao-dashboard">
+              <span class="card-label">${escapeHtml(cartao[2])} ${cartao[3] ? '· ' + escapeHtml(cartao[3]) : ''}</span>
+              <span class="card-value" style="font-size:20px;">${money(disponivel)}</span>
+              <span class="card-sub">disponível de ${money(limite)}</span>
+              <div class="cartao-progress" style="margin-top:8px;">
+                <div class="cartao-progress-bar" style="width:${usoPct}%; background:${cor};"></div>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-top:4px;">
+                <span>${usoPct}% usado</span>
+                <span>fecha dia ${cartao[5]} · vence dia ${cartao[6]}</span>
+              </div>
+              ${fatura ? `
+                <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border); font-size:12px;">
+                  <div style="display:flex; justify-content:space-between;">
+                    <span style="color:var(--muted);">Fatura ${fatura.ciclo}:</span>
+                    <strong>${money(total)}</strong>
+                  </div>
+                  <div style="display:flex; justify-content:space-between;">
+                    <span style="color:var(--muted);">Pago:</span>
+                    <span>${money(pago)}</span>
+                  </div>
+                  <div style="display:flex; justify-content:space-between;">
+                    <span style="color:var(--muted);">Restante:</span>
+                    <strong style="color:${restante > 0 ? 'var(--negative)' : 'var(--positive)'};">${money(restante)}</strong>
+                  </div>
+                  <div style="display:flex; justify-content:space-between;">
+                    <span style="color:var(--muted);">Vence:</span>
+                    <span>${fatura.dataVencimento} (${fatura.status})</span>
+                  </div>
+                </div>
+              ` : '<div style="margin-top:8px; font-size:12px; color:var(--muted); font-style:italic;">Sem fatura aberta este mês</div>'}
+            </div>
+          `;
+        }).join('')}
+      </div>
+      `}
+    </div>
+
+    <div class="cards">
+      <div class="card"><span class="card-label">Clientes</span><span class="card-value">${totClientes}</span><span class="card-sub">cadastrados</span></div>
+      <div class="card"><span class="card-label">Projetos</span><span class="card-value">${totProjetos}</span><span class="card-sub">vinculáveis</span></div>
+      <div class="card"><span class="card-label">Centros de custo</span><span class="card-value">${totCC}</span><span class="card-sub">apoiados</span></div>
+      <div class="card"><span class="card-label">Tags</span><span class="card-value">${totTags}</span><span class="card-sub">livres</span></div>
+    </div>
+  `;
+  // Listeners dos botoes de navegar
+  document.querySelectorAll('button[data-nav]').forEach(btn => {
+    btn.onclick = () => {
+      const view = btn.dataset.nav;
+      document.querySelectorAll('.nav-button').forEach(b => b.classList.remove('active'));
+      const navBtn = document.querySelector(`.nav-button[data-view="${view}"]`);
+      if (navBtn) {
+        navBtn.classList.add('active');
+        render(view);
+      }
+    };
+  });
 }
 
 function renderContas() {

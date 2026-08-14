@@ -1,6 +1,6 @@
 # GRAPHIFY — Mapa técnico do MLopes Finance
 
-> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-14T05:18:26.834Z.
+> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-14T05:24:09.913Z.
 > Não editar manualmente. Fonte da verdade: `src/` e `tools/`.
 
 ## Resumo

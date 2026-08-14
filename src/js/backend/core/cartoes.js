@@ -252,3 +252,54 @@ export function calcularCicloDaCompra(db, { cartaoId, dataCompra }) {
   const dataVencimento = `${vencY}-${String(vencM).padStart(2, '0')}-${String(diaVenc).padStart(2, '0')}`;
   return { ciclo, dataFechamento, dataVencimento };
 }
+
+/**
+ * v0.9.0 (dashboard): retorna a fatura ATUAL de um cartao (ciclo = mes corrente ou
+ * proximo ciclo aberto), com total, pago, restante e status. Se nao tem fatura
+ * aberta no ciclo atual, retorna null (UI mostra "Sem fatura este mes").
+ *
+ * Regra do "ciclo atual": o ciclo cujo mes >= mes corrente. Pega a fatura com
+ * status='aberta' (ou 'fechada') mais proxima. Se nao tem nenhuma aberta,
+ * retorna a proxima fatura (mes seguinte).
+ */
+export function faturaAtualDoCartao(db, cartaoId) {
+  if (!Number.isInteger(cartaoId)) return null;
+  const cartao = db.exec('SELECT id, nome, limite_centavos FROM cartoes WHERE id = ?', [cartaoId])[0]?.values?.[0];
+  if (!cartao) return null;
+  // Pega a fatura aberta (ou fechada) mais recente, e se nao tem, a proxima
+  const hoje = new Date();
+  const cicloAtual = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+  // Tenta fatura do mes atual
+  let fatura = db.exec(
+    `SELECT id, ciclo, data_fechamento, data_vencimento, valor_total_centavos, valor_pago_centavos, status
+     FROM faturas WHERE cartao_id = ? AND ciclo >= ? AND status IN ('aberta','fechada','vencida')
+     ORDER BY ciclo ASC LIMIT 1`,
+    [cartaoId, cicloAtual]
+  )[0]?.values?.[0];
+  // Se nao tem, pega a ultima fechada/paga (para mostrar historico)
+  if (!fatura) {
+    fatura = db.exec(
+      `SELECT id, ciclo, data_fechamento, data_vencimento, valor_total_centavos, valor_pago_centavos, status
+       FROM faturas WHERE cartao_id = ?
+       ORDER BY ciclo DESC LIMIT 1`,
+      [cartaoId]
+    )[0]?.values?.[0];
+  }
+  if (!fatura) return { cartaoId, nome: String(cartao[1]), limiteCentavos: Number(cartao[2]), fatura: null };
+  const [fId, ciclo, dataF, dataV, total, pago, status] = fatura;
+  return {
+    cartaoId,
+    nome: String(cartao[1]),
+    limiteCentavos: Number(cartao[2]),
+    fatura: {
+      id: Number(fId),
+      ciclo: String(ciclo),
+      dataFechamento: String(dataF),
+      dataVencimento: String(dataV),
+      totalCentavos: Number(total),
+      pagoCentavos: Number(pago),
+      restanteCentavos: Math.max(0, Number(total) - Number(pago)),
+      status: String(status),
+    },
+  };
+}

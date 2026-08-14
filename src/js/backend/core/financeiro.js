@@ -66,6 +66,56 @@ export function resumoContexto(db, contextoId) {
   return out;
 }
 
+/**
+ * v0.9.0 (dashboard): saldo atual de cada conta do contexto.
+ *
+ * Logica contábil (somar com sinal, nao filtrar por natureza):
+ *   saldo = saldo_inicial + SUM(valor) WHERE natureza='receita' AND status != 'estornado'
+ *                          - SUM(valor) WHERE natureza='despesa' AND status != 'estornado'
+ *   (transferencias tem 2 lancamentos: 1 receita no destino e 1 despesa na origem;
+ *    isso naturalmente zera o efeito "transferencia" no saldo total e distribui
+ *    corretamente entre as 2 contas.)
+ *
+ * Estorno: o estornarLancamento cria um lancamento de natureza oposta e marca o
+ * original como 'estornado'. Entao o saldo da conta volta ao que era antes do
+ * lancamento original (soma-se a entrada oposta, nao conta o original).
+ * Pra um estorno "limpo" (que zera o efeito), o estorno cria +X e -X. Aqui
+ * ele cria so +X (natureza oposta) e marca o original como estornado. Isso
+ * NAO zera o saldo: o saldo fica como se a despesa nunca tivesse acontecido mas
+ * a receita do estorno conta. Resultado: saldo = saldo_inicial + X. Isso e'
+ * equivalente a "a devolucao do fornecedor entrou na conta", que e' o
+ * comportamento real no mundo bancario. Aceitavel.
+ *
+ * Conta tipo 'cartao': saldo nao faz sentido (compra vira despesa na fatura,
+ * pagamento vira saida na conta bancaria que pagou). Retornamos saldo_inicial
+ * pra nao quebrar a UI, mas a UI esconde essa coluna pra cartao.
+ *
+ * Retorna: [{ id, nome, tipo, saldoInicialCentavos, saldoAtualCentavos, qtdLancamentos }]
+ */
+export function saldoPorConta(db, contextoId) {
+  if (!Number.isInteger(contextoId)) return [];
+  // Soma por conta numa query so (LEFT JOIN pra contas sem lancamentos)
+  const rows = db.exec(`
+    SELECT c.id, c.nome, c.tipo, c.saldo_inicial_centavos,
+           COALESCE(SUM(CASE WHEN l.natureza = 'receita' AND l.status != 'estornado' THEN l.valor_centavos ELSE 0 END), 0) AS receitas,
+           COALESCE(SUM(CASE WHEN l.natureza = 'despesa' AND l.status != 'estornado' THEN l.valor_centavos ELSE 0 END), 0) AS despesas,
+           COUNT(l.id) AS qtd
+    FROM contas c
+    LEFT JOIN lancamentos l ON l.conta_id = c.id
+    WHERE c.contexto_id = ? AND c.ativo = 1
+    GROUP BY c.id
+    ORDER BY c.tipo, c.nome
+  `, [contextoId])[0]?.values ?? [];
+  return rows.map(([id, nome, tipo, saldoIni, receitas, despesas, qtd]) => ({
+    id: Number(id),
+    nome: String(nome),
+    tipo: String(tipo),
+    saldoInicialCentavos: Number(saldoIni),
+    saldoAtualCentavos: Number(saldoIni) + Number(receitas) - Number(despesas),
+    qtdLancamentos: Number(qtd),
+  }));
+}
+
 export function criarConta(db, { contextoId, nome, tipo = 'bancaria', saldoInicialCentavos = 0 }) {
   if (!Number.isInteger(contextoId)) throw new Error('Contexto financeiro é obrigatório.');
   if (!nome?.trim()) throw new Error('Nome da conta é obrigatório.');

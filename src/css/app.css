@@ -122,6 +122,11 @@ h2 { margin-top: 0; font-size: 20px; color: var(--ink); }
 .card-value { display: block; font-size: 26px; margin-top: 8px; font-weight: 700; color: var(--ink); }
 .card-sub { color: var(--muted); font-size: 12px; margin-top: 6px; }
 
+/* Cartao no dashboard */
+.cartao-dashboard { min-width: 260px; }
+.cartao-progress { background: var(--line); height: 8px; border-radius: 4px; overflow: hidden; }
+.cartao-progress-bar { height: 100%; transition: width 0.3s ease; }
+
 /* ===== TOOLBAR ===== */
 .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 12px; flex-wrap: wrap; }
 .button {
