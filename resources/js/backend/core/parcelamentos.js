@@ -545,3 +545,167 @@ export function obterParcelamentoCompleto(db, parcelamentoId) {
     },
   };
 }
+
+/**
+ * v0.11.1: Detecta parcelamentos a partir dos lancamentos ja importados do
+ * cartao. Procura o padrao "Nome - Parcela N/M" na descricao (formato tipico
+ * do Nubank) e agrupa por (nome base normalizado, total de parcelas).
+ *
+ * NAO cria nada — so retorna os candidatos pra o user confirmar.
+ *
+ * Retorna: [{ nomeBase, totalParcelas, valorTotalCentavos, parcelasDetectadas,
+ *   completo (true se N/M == totalParcelas), itens: [{lancamentoId, numero, dataCompetencia, valorCentavos}] }]
+ */
+export function detectarParcelamentosDoExtrato(db, contextoId, cartaoId) {
+  if (!Number.isInteger(contextoId)) throw new Error('contextoId obrigatorio.');
+  if (!Number.isInteger(cartaoId)) throw new Error('cartaoId obrigatorio.');
+  // Pega todos os lancamentos do cartao (ja no DB) que tem "Parcela" na descricao
+  const rows = db.exec(`
+    SELECT id, data_competencia, valor_centavos, descricao
+    FROM lancamentos
+    WHERE contexto_id = ? AND cartao_id = ?
+      AND descricao LIKE '%Parcela %'
+    ORDER BY data_competencia
+  `, [contextoId, cartaoId])[0]?.values ?? [];
+  // Regex: "Nome - Parcela N/M" (case-insensitive, com ou sem espacos)
+  // Aceita: "Amazon - Parcela 3/10", "IFOOD*IFOOD - Parcela  03/12", "Loja - parcela 1/3"
+  const re = /^(.+?)\s*-\s*[Pp]arcela\s+(\d+)\s*\/\s*(\d+)\s*$/;
+  // Agrupa por (nomeBase normalizado, totalParcelas)
+  const grupos = new Map();
+  for (const [id, dataComp, valor, desc] of rows) {
+    const m = re.exec(String(desc).trim());
+    if (!m) continue;
+    const nomeBase = m[1].trim();
+    const numero = Number(m[2]);
+    const total = Number(m[3]);
+    // Normaliza nome: tira espacos extras + lowercase pra agrupar variantes
+    const chave = `${nomeBase.toLowerCase()}|${total}`;
+    if (!grupos.has(chave)) {
+      grupos.set(chave, {
+        nomeBase,
+        totalParcelas: total,
+        itens: [],
+      });
+    }
+    grupos.get(chave).itens.push({
+      lancamentoId: Number(id),
+      dataCompetencia: String(dataComp),
+      valorCentavos: Number(valor),
+      numero,
+    });
+  }
+  // Monta os candidatos
+  const candidatos = [];
+  for (const g of grupos.values()) {
+    g.itens.sort((a, b) => a.numero - b.numero);
+    const valorTotal = g.itens.reduce((s, i) => s + i.valorCentavos, 0);
+    candidatos.push({
+      nomeBase: g.nomeBase,
+      totalParcelas: g.totalParcelas,
+      valorTotalCentavos: valorTotal,
+      parcelasDetectadas: g.itens.length,
+      completo: g.itens.length === g.totalParcelas,
+      itens: g.itens,
+    });
+  }
+  // Ordena: incompletos primeiro (mais urgentes de criar), depois completos, ordem alfabetica
+  candidatos.sort((a, b) => {
+    if (a.completo !== b.completo) return a.completo ? 1 : -1;
+    return a.nomeBase.localeCompare(b.nomeBase);
+  });
+  return candidatos;
+}
+
+/**
+ * v0.11.1: Cria os parcelamentos a partir dos candidatos selecionados.
+ * Cada candidato vira 1 parcelamento com N parcelas (N = totalParcelas).
+ * As parcelas existentes (ja no DB) sao vinculadas via `lancamento_id`.
+ * Parcelas faltantes sao criadas com status='pendente' e dataVencimento
+ * inferida pelo padrao mensal (data da 1a parcela + k meses).
+ *
+ * Se ja existe um parcelamento com a mesma descricao, IGNORA (nao duplica).
+ *
+ * `cartaoId` e `contextoId` precisam bater com os lancamentos detectados.
+ *
+ * Retorna: [{ parcelamentoId, descricao, parcelasCriadas, parcelasVinculadas, jaExistia }]
+ */
+export function criarParcelamentosDetectados(db, contextoId, cartaoId, candidatos) {
+  if (!Number.isInteger(contextoId)) throw new Error('contextoId obrigatorio.');
+  if (!Number.isInteger(cartaoId)) throw new Error('cartaoId obrigatorio.');
+  if (!Array.isArray(candidatos) || candidatos.length === 0) return [];
+  const resultados = [];
+  for (const c of candidatos) {
+    if (!c || !c.nomeBase || !c.totalParcelas || !Array.isArray(c.itens) || c.itens.length === 0) {
+      resultados.push({ ok: false, erro: 'candidato invalido', candidato: c });
+      continue;
+    }
+    // Verifica se ja existe parcelamento com mesmo nome (case-insensitive)
+    const jaExiste = db.exec(
+      `SELECT id FROM parcelamentos WHERE contexto_id = ? AND LOWER(descricao) = LOWER(?) LIMIT 1`,
+      [contextoId, c.nomeBase]
+    )[0]?.values?.[0];
+    if (jaExiste) {
+      resultados.push({ ok: false, jaExistia: true, parcelamentoId: Number(jaExiste), descricao: c.nomeBase });
+      continue;
+    }
+    // Calcula valor base e resto (igual criarParcelamento)
+    const valorBase = Math.floor(c.valorTotalCentavos / c.totalParcelas);
+    const resto = c.valorTotalCentavos - valorBase * c.totalParcelas;
+    // Pega a 1a parcela (menor numero) pra inferir data de inicio
+    const itensOrdenados = [...c.itens].sort((a, b) => a.numero - b.numero);
+    const primeiraData = itensOrdenados[0].dataCompetencia;
+    db.run('BEGIN');
+    try {
+      // 1. Cria o parcelamento
+      db.run(
+        `INSERT INTO parcelamentos (contexto_id, descricao, valor_total_centavos, num_parcelas, cartao_id, dia_vencimento, data_primeira_parcela, observacoes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [contextoId, c.nomeBase, c.valorTotalCentavos, c.totalParcelas, cartaoId, 10, primeiraData, 'Detectado automaticamente do extrato.']
+      );
+      const parcelamentoId = Number(db.exec('SELECT last_insert_rowid() AS id')[0].values[0][0]);
+      // 2. Cria as N parcelas
+      for (let k = 0; k < c.totalParcelas; k++) {
+        const dataVenc = adicionarMeses(primeiraData, k);
+        const valor = valorBase + (k === 0 ? resto : 0);
+        db.run(
+          `INSERT INTO parcelas (parcelamento_id, numero, data_vencimento, valor_centavos, status) VALUES (?, ?, ?, ?, 'pendente')`,
+          [parcelamentoId, k + 1, dataVenc, valor]
+        );
+      }
+      // 3. Vincula as parcelas detectadas (que ja tem lancamento_id) aos lancamentos existentes
+      let parcelasVinculadas = 0;
+      for (const it of itensOrdenados) {
+        // Encontra a parcela correspondente (mesmo numero)
+        const pRow = db.exec(
+          `SELECT id, lancamento_id FROM parcelas WHERE parcelamento_id = ? AND numero = ?`,
+          [parcelamentoId, it.numero]
+        )[0]?.values?.[0];
+        if (pRow && pRow[1] == null) {
+          db.run('UPDATE parcelas SET lancamento_id = ? WHERE id = ?', [it.lancamentoId, pRow[0]]);
+          parcelasVinculadas++;
+        }
+      }
+      // 4. Se a parcela ja foi paga (status conciliado/estornado no lancamento), marca a parcela como paga tambem
+      for (const it of itensOrdenados) {
+        const statusLanc = db.exec('SELECT status FROM lancamentos WHERE id = ?', [it.lancamentoId])[0]?.values?.[0]?.[0];
+        if (statusLanc === 'conciliado' || statusLanc === 'estornado') {
+          db.run(`UPDATE parcelas SET status = 'paga', paga_em = ? WHERE parcelamento_id = ? AND numero = ?`,
+            [it.dataCompetencia, parcelamentoId, it.numero]);
+        }
+      }
+      db.run('COMMIT');
+      resultados.push({
+        ok: true,
+        parcelamentoId,
+        descricao: c.nomeBase,
+        totalParcelas: c.totalParcelas,
+        parcelasVinculadas,
+        parcelasCriadas: c.totalParcelas - parcelasVinculadas,
+        jaExistia: false,
+      });
+    } catch (e) {
+      db.run('ROLLBACK');
+      throw e;
+    }
+  }
+  return resultados;
+}

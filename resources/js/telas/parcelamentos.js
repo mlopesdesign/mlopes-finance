@@ -33,6 +33,12 @@ export function renderParcelamentos(contextoId, api) {
   const totalQuitadoGeral = quitados.reduce((s, p) => s + p.valorTotalCentavos, 0);
   // Ultima parcela a vencer (de TODOS os parcelamentos, ativos e quitados)
   const ultimaParcelaMes = calendario.length > 0 ? calendario[calendario.length - 1].mes : null;
+  // v0.11.1: conta quantos parcelados foram detectados no extrato mas ainda nao tem parcelamento
+  let qtdDetectadosExtrato = 0;
+  for (const c of cartoes) {
+    const det = _api('parcelamentos:detectarDoExtrato', { contextoId, cartaoId: c[0] });
+    qtdDetectadosExtrato += det.length;
+  }
 
   app.innerHTML = `
     <span class="eyebrow">FASE 7</span>
@@ -65,7 +71,10 @@ export function renderParcelamentos(contextoId, api) {
     <div class="panel">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
         <h2>📦 Ativos (${ativos.length})</h2>
-        <button class="button" id="parcelamento-novo">+ Novo parcelamento</button>
+        <div>
+          ${qtdDetectadosExtrato > 0 ? `<button class="button ghost" id="parcelamento-detectar-extrato" title="Encontrei ${qtdDetectadosExtrato} compra(s) parcelada(s) no extrato que ainda nao virou parcelamento">🔍 Detectar parcelados do extrato (${qtdDetectadosExtrato})</button> ` : ''}
+          <button class="button" id="parcelamento-novo">+ Novo parcelamento</button>
+        </div>
       </div>
       ${ativos.length === 0 ? '<div class="empty">Nenhum parcelamento ativo. Clique "+ Novo parcelamento" pra cadastrar uma compra parcelada (ex: iPhone 12x R$ 250).</div>' : `
       <div style="overflow-x:auto;">
@@ -189,6 +198,8 @@ export function renderParcelamentos(contextoId, api) {
   `;
 
   document.getElementById('parcelamento-novo').onclick = () => formParcelamento(null, cartoes, categorias, contas);
+  const btnDetectar = document.getElementById('parcelamento-detectar-extrato');
+  if (btnDetectar) btnDetectar.onclick = () => abrirModalDeteccao(cartoes);
   document.querySelectorAll('button.parcelamento-ver').forEach(btn => {
     btn.onclick = () => verParcelas(Number(btn.dataset.id), listaCompleta);
   });
@@ -465,6 +476,109 @@ function formParcelamento(pExistente, cartoes, categorias, contas) {
     } catch (err) {
       if (globalThis.toastErr) toastErr('Erro: ' + err.message);
     }
+  };
+}
+
+// v0.11.1: Modal de deteccao automatica de parcelados a partir do extrato importado.
+// Lista candidatos por cartao e deixa o user escolher quais criar.
+function abrirModalDeteccao(cartoes) {
+  // Pra cada cartao, busca os candidatos
+  const grupos = [];
+  for (const c of cartoes) {
+    const det = _api('parcelamentos:detectarDoExtrato', { contextoId: _contextoId, cartaoId: c[0] });
+    if (det.length > 0) grupos.push({ cartao: c, candidatos: det });
+  }
+  if (grupos.length === 0) {
+    if (globalThis.toastOk) toastOk('Nenhum parcelado novo encontrado no extrato. Tudo certo!');
+    return;
+  }
+  // Calcula totais
+  const totalCandidatos = grupos.reduce((s, g) => s + g.candidatos.length, 0);
+  const totalIncompletos = grupos.reduce((s, g) => s + g.candidatos.filter(c => !c.completo).length, 0);
+  // Cria overlay + modal
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'parcelamento-deteccao-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width: 720px; max-height: 85vh; overflow-y:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h2 style="margin:0;">🔍 Parcelados detectados no extrato</h2>
+        <button class="button secondary" id="parcelamento-deteccao-fechar">Fechar</button>
+      </div>
+      <p class="subtitle">Achei <strong>${totalCandidatos}</strong> compra(s) parcelada(s) nos extratos importados. ${totalIncompletos > 0 ? `<strong style="color:var(--negative);">${totalIncompletos}</strong> tao incompletas (faltam parcelas).` : ''} Marca quais quer transformar em parcelamento. O sistema vincula automaticamente os lancamentos existentes e cria as parcelas que faltam.</p>
+      <div style="margin-bottom:12px;">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" id="parcelamento-deteccao-todos" checked />
+          <span><strong>Selecionar todos</strong></span>
+        </label>
+      </div>
+      ${grupos.map(g => `
+        <div class="panel" style="border-color: var(--brand); margin-bottom:10px;">
+          <h3 style="margin:0 0 8px 0;">💳 ${escapeHtml(g.cartao[2])} <span style="color:var(--muted); font-size:13px; font-weight:normal;">(${g.candidatos.length} candidato(s))</span></h3>
+          ${g.candidatos.map((c, idx) => {
+            const statusLabel = c.completo
+              ? '<span class="pill" style="color:var(--positive);">✓ ' + c.parcelasDetectadas + '/' + c.totalParcelas + '</span>'
+              : '<span class="pill warn">' + c.parcelasDetectadas + '/' + c.totalParcelas + ' (falta)</span>';
+            const itemIds = c.itens.map(i => i.lancamentoId).join(',');
+            return `
+              <label style="display:flex; align-items:center; gap:10px; padding:6px 0; cursor:pointer; border-top: 1px solid var(--border);">
+                <input type="checkbox" class="parcelamento-deteccao-item" data-cartoid="${g.cartao[0]}" data-itens="${itemIds}" data-nome="${escapeHtml(c.nomeBase)}" data-total="${c.totalParcelas}" data-valor="${c.valorTotalCentavos}" data-nome-real="${escapeHtml(c.nomeBase)}" checked />
+                <div style="flex:1;">
+                  <strong>${escapeHtml(c.nomeBase)}</strong>
+                  <div style="font-size:12px; color:var(--muted);">${c.totalParcelas}x ${money(c.valorTotalCentavos / c.totalParcelas)} = ${money(c.valorTotalCentavos)}</div>
+                </div>
+                ${statusLabel}
+              </label>
+            `;
+          }).join('')}
+        </div>
+      `).join('')}
+      <div class="form-actions" style="margin-top: 16px;">
+        <button class="button" id="parcelamento-deteccao-criar">✓ Criar parcelamentos selecionados</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  // Fechar
+  document.getElementById('parcelamento-deteccao-fechar').onclick = () => overlay.remove();
+  // Selecionar todos
+  document.getElementById('parcelamento-deteccao-todos').onchange = (e) => {
+    overlay.querySelectorAll('input.parcelamento-deteccao-item').forEach(cb => cb.checked = e.target.checked);
+  };
+  // Criar
+  document.getElementById('parcelamento-deteccao-criar').onclick = () => {
+    const selecionados = Array.from(overlay.querySelectorAll('input.parcelamento-deteccao-item:checked'));
+    if (selecionados.length === 0) {
+      if (globalThis.toastWarn) toastWarn('Selecione pelo menos 1 candidato.');
+      return;
+    }
+    // Agrupa por cartao e chama a rota de cada um
+    const porCartao = new Map();
+    for (const cb of selecionados) {
+      const cartaoId = Number(cb.dataset.cartoid);
+      if (!porCartao.has(cartaoId)) porCartao.set(cartaoId, []);
+      // Recupera o candidato do backend (pra ter os dados completos)
+      const todos = _api('parcelamentos:detectarDoExtrato', { contextoId: _contextoId, cartaoId });
+      const c = todos.find(x => x.nomeBase === cb.dataset.nomeReal && x.totalParcelas === Number(cb.dataset.total));
+      if (c) porCartao.get(cartaoId).push(c);
+    }
+    let totalCriados = 0, totalJaExistiam = 0, totalErros = 0;
+    for (const [cartaoId, candidatos] of porCartao.entries()) {
+      try {
+        const r = _api('parcelamentos:criarDetectados', { contextoId: _contextoId, cartaoId, candidatos });
+        for (const x of r) {
+          if (x.ok) totalCriados++;
+          else if (x.jaExistia) totalJaExistiam++;
+          else totalErros++;
+        }
+      } catch (err) {
+        if (globalThis.toastErr) toastErr('Erro: ' + err.message);
+        return;
+      }
+    }
+    overlay.remove();
+    if (globalThis.toastOk) toastOk(`Pronto! ${totalCriados} parcelamento(s) criado(s)${totalJaExistiam > 0 ? `, ${totalJaExistiam} ja existia(m)` : ''}${totalErros > 0 ? `, ${totalErros} erro(s)` : ''}.`);
+    renderParcelamentos(_contextoId, _api);
   };
 }
 

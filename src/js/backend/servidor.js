@@ -7,7 +7,7 @@ import { criarTransferencia, listarTransferencias, excluirTransferencia } from '
 import { registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa } from './core/baixas.js';
 import { criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias, excluirRecorrencia, desativarRecorrencia } from './core/recorrencias.js';
 import { criarCustoFixo, listarCustosFixos, totalCustosFixosMes, resumoCustosFixosMes, gerarOcorrenciasMesAtual, alternarCustoFixo, excluirCustoFixo } from './core/custosFixos.js';
-import { criarParcelamento, listarParcelamentos, listarParcelas, pagarParcela, excluirParcelamento, projecaoParcelasPorMes, resumoCompletoPorMes, calendarioCompletoParcelas, obterParcelamentoCompleto } from './core/parcelamentos.js';
+import { criarParcelamento, listarParcelamentos, listarParcelas, pagarParcela, excluirParcelamento, projecaoParcelasPorMes, resumoCompletoPorMes, calendarioCompletoParcelas, obterParcelamentoCompleto, detectarParcelamentosDoExtrato, criarParcelamentosDetectados } from './core/parcelamentos.js';
 import { criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura, atualizarCartao, excluirCartao, listarFaturasDetalhadas, listarLancamentosDaFatura, calcularCicloDaCompra, faturaAtualDoCartao } from './core/cartoes.js';
 import { criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao } from './core/importacao.js';
 import { balancete, comparativo, exportaCSV, gastosPorMes, topCategorias, topDespesas, gastosPorConta, faturasAVencer, variacaoMensal, alertas, exportarMovimentosCSV } from './core/relatorios.js';
@@ -159,6 +159,9 @@ export function criarApi(db, persistir = () => {}) {
     'parcelamentos:resumoCompleto': (d) => resumoCompletoPorMes(db, d.contextoId, d.mesesFuturos ?? 12),
     'parcelamentos:calendarioCompleto': (d) => calendarioCompletoParcelas(db, d.contextoId, d.mesesMinimos ?? 6),
     'parcelamentos:obterCompleto': (d) => obterParcelamentoCompleto(db, d.parcelamentoId),
+    // v0.11.1: deteccao automatica de parcelados a partir do extrato importado
+    'parcelamentos:detectarDoExtrato': (d) => detectarParcelamentosDoExtrato(db, d.contextoId, d.cartaoId),
+    'parcelamentos:criarDetectados': (d) => { const r = criarParcelamentosDetectados(db, d.contextoId, d.cartaoId, d.candidatos); persistir(); return r; },
 
     // Auto-update via GitHub Releases (Fase Hardening) — secao 5 do PADRAO.
     // ATENCAO: o backup do banco eh feito na rota `update:aplicar` ANTES de

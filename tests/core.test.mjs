@@ -16,7 +16,7 @@ import { registrarBaixa, saldoEmAberto, listarBaixas } from '../src/js/backend/c
 import { criarRecorrencia, gerarProximaOcorrencia } from '../src/js/backend/core/recorrencias.js';
 import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas, atualizarCartao, excluirCartao, calcularCicloDaCompra, listarFaturasDetalhadas, listarLancamentosDaFatura, faturaAtualDoCartao } from '../src/js/backend/core/cartoes.js';
 import { criarCustoFixo, listarCustosFixos, totalCustosFixosMes, resumoCustosFixosMes, gerarOcorrenciasMesAtual, alternarCustoFixo, excluirCustoFixo } from '../src/js/backend/core/custosFixos.js';
-import { criarParcelamento, listarParcelamentos, listarParcelas, pagarParcela, excluirParcelamento, projecaoParcelasPorMes, resumoCompletoPorMes, calendarioCompletoParcelas, obterParcelamentoCompleto } from '../src/js/backend/core/parcelamentos.js';
+import { criarParcelamento, listarParcelamentos, listarParcelas, pagarParcela, excluirParcelamento, projecaoParcelasPorMes, resumoCompletoPorMes, calendarioCompletoParcelas, obterParcelamentoCompleto, detectarParcelamentosDoExtrato, criarParcelamentosDetectados } from '../src/js/backend/core/parcelamentos.js';
 import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, inferirNaturezaItem, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao } from '../src/js/backend/core/importacao.js';
 import { balancete, comparativo, exportaCSV, calcularPeriodo, gastosPorMes, topCategorias, topDespesas, gastosPorConta, faturasAVencer, variacaoMensal, alertas, exportarMovimentosCSV } from '../src/js/backend/core/relatorios.js';
 import { aplicarAtualizacao, pathCacheWebView2Async, invalidarCacheWebView2 } from '../src/js/backend/update.js';
@@ -2284,4 +2284,130 @@ test('parcelamentos: calendarioCompletoParcelas agrupa por mes com totais corret
   assert.equal(mes0.totalCentavos, 10000 + 4000, '10000 (A) + 4000 (B) = 14000');
   assert.equal(mes0.totalPagasCentavos, 10000, 'A 1a parcela paga');
   assert.equal(mes0.totalPendentesCentavos, 4000, 'B 1a parcela pendente');
+});
+
+// ============================================================================
+// v0.11.1: DETECCAO AUTOMATICA DE PARCELADOS A PARTIR DO EXTRATO IMPORTADO
+// ============================================================================
+
+test('parcelamentos: detectarParcelamentosDoExtrato acha padrao "Nome - Parcela N/M" (formato Nubank)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartaoId = setupCartaoParaParcelamento(db, cid);
+  // Cria 3 lancamentos manuais no formato Nubank (ja com cartao_id, mas SEM parcelamento)
+  for (let i = 1; i <= 3; i++) {
+    const data = `2026-0${i + 7}-11`;
+    const d = String(i + 7).padStart(2, '0');
+    db.run(`INSERT INTO lancamentos (contexto_id, conta_id, cartao_id, natureza, valor_centavos, data_competencia, descricao, status, criado_em) VALUES (?, (SELECT conta_associada_id FROM cartoes WHERE id=?), ?, 'despesa', 250000, ?, ?, 'aberto', '2026-08-14 10:00:00')`,
+      [cid, cartaoId, cartaoId, `${data.length === 10 ? data : `2026-${d}-11`}`, `Amazon - Parcela ${i}/3`]);
+  }
+  const det = detectarParcelamentosDoExtrato(db, cid, cartaoId);
+  assert.equal(det.length, 1, '1 grupo detectado (Amazon 3/3)');
+  assert.equal(det[0].nomeBase, 'Amazon');
+  assert.equal(det[0].totalParcelas, 3);
+  assert.equal(det[0].parcelasDetectadas, 3);
+  assert.equal(det[0].completo, true);
+  assert.equal(det[0].valorTotalCentavos, 750000);
+  assert.equal(det[0].itens.length, 3);
+});
+
+test('parcelamentos: detectarParcelamentosDoExtrato agrupa por (nome, total) e detecta incompleto', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartaoId = setupCartaoParaParcelamento(db, cid);
+  // Amazon 1/10 e 2/10 (so 2 de 10)
+  for (let i = 1; i <= 2; i++) {
+    const d = String(i + 7).padStart(2, '0');
+    db.run(`INSERT INTO lancamentos (contexto_id, conta_id, cartao_id, natureza, valor_centavos, data_competencia, descricao, status, criado_em) VALUES (?, (SELECT conta_associada_id FROM cartoes WHERE id=?), ?, 'despesa', 50000, '2026-${d}-11', ?, 'aberto', '2026-08-14 10:00:00')`,
+      [cid, cartaoId, cartaoId, `Amazon - Parcela ${i}/10`]);
+  }
+  const det = detectarParcelamentosDoExtrato(db, cid, cartaoId);
+  assert.equal(det.length, 1);
+  assert.equal(det[0].totalParcelas, 10);
+  assert.equal(det[0].parcelasDetectadas, 2);
+  assert.equal(det[0].completo, false, 'incompleto (so 2 de 10)');
+});
+
+test('parcelamentos: detectarParcelamentosDoExtrato ignora lancamentos sem "Parcela"', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartaoId = setupCartaoParaParcelamento(db, cid);
+  // 1 lancamento parcelado + 1 avulso
+  db.run(`INSERT INTO lancamentos (contexto_id, conta_id, cartao_id, natureza, valor_centavos, data_competencia, descricao, status, criado_em) VALUES (?, (SELECT conta_associada_id FROM cartoes WHERE id=?), ?, 'despesa', 250000, '2026-08-11', 'Amazon - Parcela 1/3', 'aberto', '2026-08-14 10:00:00')`,
+    [cid, cartaoId, cartaoId]);
+  db.run(`INSERT INTO lancamentos (contexto_id, conta_id, cartao_id, natureza, valor_centavos, data_competencia, descricao, status, criado_em) VALUES (?, (SELECT conta_associada_id FROM cartoes WHERE id=?), ?, 'despesa', 5000, '2026-08-12', 'Uber *One Membership U', 'aberto', '2026-08-14 10:00:00')`,
+    [cid, cartaoId, cartaoId]);
+  const det = detectarParcelamentosDoExtrato(db, cid, cartaoId);
+  assert.equal(det.length, 1, 'so o Amazon - Parcela');
+  assert.equal(det[0].nomeBase, 'Amazon');
+});
+
+test('parcelamentos: criarParcelamentosDetectados cria o parcelamento e vincula as parcelas existentes', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartaoId = setupCartaoParaParcelamento(db, cid);
+  // 3 lancamentos Amazon - Parcela 1/3, 2/3, 3/3 (valor 25000 cada, total 75000)
+  for (let i = 1; i <= 3; i++) {
+    const d = String(i + 7).padStart(2, '0');
+    db.run(`INSERT INTO lancamentos (contexto_id, conta_id, cartao_id, natureza, valor_centavos, data_competencia, descricao, status, criado_em) VALUES (?, (SELECT conta_associada_id FROM cartoes WHERE id=?), ?, 'despesa', 25000, '2026-${d}-11', ?, 'aberto', '2026-08-14 10:00:00')`,
+      [cid, cartaoId, cartaoId, `Amazon - Parcela ${i}/3`]);
+  }
+  const det = detectarParcelamentosDoExtrato(db, cid, cartaoId);
+  const r = criarParcelamentosDetectados(db, cid, cartaoId, [det[0]]);
+  assert.equal(r.length, 1);
+  assert.equal(r[0].ok, true);
+  assert.equal(r[0].jaExistia, false);
+  assert.equal(r[0].totalParcelas, 3);
+  // Parcelamento foi criado
+  const lista = listarParcelamentos(db, cid);
+  assert.equal(lista.length, 1);
+  assert.equal(lista[0].descricao, 'Amazon');
+  // Cada parcela tem lancamento_id vinculado
+  const ps = listarParcelas(db, lista[0].id);
+  for (const [, , , , , lancId] of ps) {
+    assert.ok(lancId != null, 'parcela vinculada ao lancamento original');
+  }
+});
+
+test('parcelamentos: criarParcelamentosDetectados ignora parcelamento que ja existe (nao duplica)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartaoId = setupCartaoParaParcelamento(db, cid);
+  // Cria um parcelamento "Amazon" manualmente
+  criarParcelamento(db, { contextoId: cid, descricao: 'Amazon', valorTotalCentavos: 75000, numParcelas: 3, cartaoId, dataPrimeiraParcela: '2026-08-10' });
+  // Detecta Amazon no extrato (so 1 lancamento)
+  db.run(`INSERT INTO lancamentos (contexto_id, conta_id, cartao_id, natureza, valor_centavos, data_competencia, descricao, status, criado_em) VALUES (?, (SELECT conta_associada_id FROM cartoes WHERE id=?), ?, 'despesa', 25000, '2026-08-11', 'Amazon - Parcela 1/3', 'aberto', '2026-08-14 10:00:00')`,
+    [cid, cartaoId, cartaoId]);
+  const det = detectarParcelamentosDoExtrato(db, cid, cartaoId);
+  const r = criarParcelamentosDetectados(db, cid, cartaoId, [det[0]]);
+  assert.equal(r.length, 1);
+  assert.equal(r[0].ok, false);
+  assert.equal(r[0].jaExistia, true);
+  // Continua so 1 parcelamento
+  const lista = listarParcelamentos(db, cid);
+  assert.equal(lista.length, 1);
+});
+
+test('parcelamentos: criarParcelamentosDetectados cria parcelas faltantes e marca como paga se lancamento ja ta conciliado', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartaoId = setupCartaoParaParcelamento(db, cid);
+  // So 1 lancamento, mas parcelamento tem 3 parcelas (vai criar 2 faltantes)
+  db.run(`INSERT INTO lancamentos (contexto_id, conta_id, cartao_id, natureza, valor_centavos, data_competencia, descricao, status, criado_em) VALUES (?, (SELECT conta_associada_id FROM cartoes WHERE id=?), ?, 'despesa', 25000, '2026-08-11', 'Amazon - Parcela 1/3', 'conciliado', '2026-08-14 10:00:00')`,
+    [cid, cartaoId, cartaoId]);
+  const det = detectarParcelamentosDoExtrato(db, cid, cartaoId);
+  const r = criarParcelamentosDetectados(db, cid, cartaoId, [det[0]]);
+  assert.equal(r[0].ok, true);
+  assert.equal(r[0].parcelasVinculadas, 1);
+  assert.equal(r[0].parcelasCriadas, 2);
+  // Verifica que a parcela 1 foi marcada como paga (ja tava conciliada)
+  const ps = listarParcelas(db, r[0].parcelamentoId);
+  const p1 = ps.find(p => p[1] === 1);
+  assert.equal(p1[4], 'paga', 'parcela 1 marcada como paga automaticamente');
+  assert.ok(p1[7] != null, 'pagaEm preenchida');
+  // Parcelas 2 e 3 ficam pendentes
+  const p2 = ps.find(p => p[1] === 2);
+  const p3 = ps.find(p => p[1] === 3);
+  assert.equal(p2[4], 'pendente');
+  assert.equal(p3[4], 'pendente');
 });
