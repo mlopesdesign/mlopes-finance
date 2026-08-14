@@ -85,24 +85,12 @@ export function renderImportacao(contextoId, api) {
       <div class="field-row">
         <div>
           <div class="field-label">Conta de destino</div>
-          <div class="field-help">Todos os lançamentos serão criados nesta conta.</div>
+          <div class="field-help">A natureza (receita/despesa) é inferida automaticamente pelo tipo da conta e pela descrição. Pra conferir, veja os badges na prévia acima.</div>
         </div>
         <div>
           <select id="imp-conta">
             <option value="">— escolha uma conta —</option>
             ${_contasCache.map(c => `<option value="${c[0]}">${escapeHtml(c[2])}</option>`).join('')}
-          </select>
-        </div>
-      </div>
-      <div class="field-row">
-        <div>
-          <div class="field-label">Natureza padrão (quando ambíguo)</div>
-          <div class="field-help">Valores positivos viram receita, negativos viram despesa. Use isso para casos sem sinal.</div>
-        </div>
-        <div>
-          <select id="imp-natureza">
-            <option value="despesa" selected>Despesa</option>
-            <option value="receita">Receita</option>
           </select>
         </div>
       </div>
@@ -230,7 +218,8 @@ function confirmar() {
     if (globalThis.toastWarn) toastWarn('Escolha uma conta de destino antes de confirmar.');
     return;
   }
-  const natureza = document.getElementById('imp-natureza').value;
+  // A natureza (receita/despesa) e' inferida automaticamente pelo backend.
+  // Default 'despesa' e' o fallback se nao conseguir inferir (extrato bancario pessoal: tudo despesa).
   const itensAntes = _api('importacao:listarItens', { importacaoId: _importacaoAtual });
   const pendentes = itensAntes.filter((i) => i[6] === 'pendente').length;
   const c = _contasCache.find((x) => x[0] === contaId);
@@ -239,12 +228,19 @@ function confirmar() {
     const out = _api('importacao:confirmar', {
       importacaoId: _importacaoAtual,
       contaId,
-      padraoNatureza: natureza,
+      padraoNatureza: 'despesa',
     });
     _importacaoAtual = null;
     document.getElementById('imp-resultado-panel').style.display = 'block';
+    // Mostra resumo com inferencias (despesa vs receita)
+    const inferidas = (out.inferencias || []).reduce((acc, i) => { acc[i.natureza] = (acc[i.natureza] || 0) + 1; return acc; }, {});
+    const txtDespesa = inferidas.despesa || 0;
+    const txtReceita = inferidas.receita || 0;
+    const resumoNatureza = (txtDespesa || txtReceita)
+      ? `<br><span class="muted" style="font-size:12px;">Inferido: <strong>${txtDespesa}</strong> despesa, <strong>${txtReceita}</strong> receita (palavras-chave + tipo da conta)</span>`
+      : '';
     document.getElementById('imp-resultado').innerHTML =
-      `<div class="success-card"><strong>${out.importados} lançamentos criados com sucesso</strong> em <em>${escapeHtml(_contextoNome)} › ${escapeHtml(contaNome)}</em>.<br>Veja em <em>Lançamentos</em>.</div>`;
+      `<div class="success-card"><strong>${out.importados} lançamentos criados com sucesso</strong> em <em>${escapeHtml(_contextoNome)} › ${escapeHtml(contaNome)}</em>.${resumoNatureza}<br>Veja em <em>Lançamentos</em>.</div>`;
     document.getElementById('imp-previa-panel').style.display = 'none';
     document.getElementById('imp-confirmar-panel').style.display = 'none';
     document.getElementById('imp-destino-resumo').style.display = 'none';

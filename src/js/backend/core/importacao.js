@@ -179,22 +179,69 @@ export function criarPreviaImportacao(db, { contextoId, arquivoOrigem, formato, 
   return idImport;
 }
 
+/**
+ * Infere a natureza (receita|despesa) de um item de importacao baseado em heuristicas:
+ * 1. Sinal do valor (negativo = despesa, positivo = receita) - regra de ouro
+ * 2. Tipo da conta: cartao de credito = SEMPRE despesa (mesmo valor positivo)
+ * 3. Palavras-chave na descricao (so aplicam se o sinal for ambiguo, ex: 0 ou
+ *    valor positivo num extrato de cartao)
+ * 4. Fallback: padraoNatureza do user (default 'despesa')
+ *
+ * Retorna { natureza, motivo } pra UI mostrar pro user o que inferiu.
+ */
+export function inferirNaturezaItem({ descricao = '', valor = 0, contaTipo = 'bancaria', contaNome = '', padraoNatureza = 'despesa' }) {
+  const desc = String(descricao).toUpperCase();
+  // Regras fortes: tipo da conta
+  if (contaTipo === 'cartao') {
+    return { natureza: 'despesa', motivo: 'conta = cartão de crédito' };
+  }
+  // Palavras-chave de despesa (fortes)
+  const kwDespesa = ['PAGAMENTO', 'PAGTO', 'BOLETO', 'COMPRA', 'DEBITO', 'DÉBITO', 'TARIFA',
+                     'IOF', 'JUROS', 'MULTA', 'ANUIDADE', 'MENSALIDADE', 'SAQUE'];
+  for (const kw of kwDespesa) {
+    if (desc.includes(kw)) return { natureza: 'despesa', motivo: `descrição contém "${kw}"` };
+  }
+  // Palavras-chave de receita (fortes)
+  const kwReceita = ['RECEBIDO', 'RECEB', 'CRED', 'CRÉD', 'PIX RECEB', 'TRANSF RECEB',
+                    'DEPÓSITO', 'DEPOSITO', 'SALÁRIO', 'SALARIO', 'RENDIMENTO',
+                    'ALUGUEL RECEB', 'PIX RECEBIDO', 'TED RECEB', 'DOC RECEB'];
+  for (const kw of kwReceita) {
+    if (desc.includes(kw)) return { natureza: 'receita', motivo: `descrição contém "${kw}"` };
+  }
+  // Sem keyword: usa o sinal do valor
+  if (valor < 0) return { natureza: 'despesa', motivo: 'valor negativo' };
+  if (valor > 0) {
+    // Valor positivo: depende do tipo de conta
+    if (contaTipo === 'investimento') {
+      // Investimento: aplicacao = despesa (voce investiu); resgate = receita
+      if (kwDespesa.some(kw => desc.includes(kw))) return { natureza: 'despesa', motivo: 'investimento + aplicacao' };
+      return { natureza: 'receita', motivo: 'investimento + valor positivo (assume resgate)' };
+    }
+    return { natureza: padraoNatureza, motivo: 'sem palavra-chave, usando padrão' };
+  }
+  return { natureza: padraoNatureza, motivo: 'valor zero, usando padrão' };
+}
+
 /** Define a conta de destino e confirma a importacao. Cria lancamentos. */
 export function confirmarImportacao(db, { importacaoId, contaId, padraoNatureza = 'despesa' }, agora = new Date().toISOString()) {
   if (!Number.isInteger(importacaoId) || !Number.isInteger(contaId)) throw new Error('importacaoId e contaId obrigatorios.');
+  // Busca dados da conta pra inferir natureza (tipo + nome)
+  const conta = db.exec('SELECT id, nome, tipo FROM contas WHERE id = ?', [contaId])[0]?.values?.[0];
+  if (!conta) throw new Error('Conta nao encontrada.');
+  const contaNome = String(conta[1] || '');
+  const contaTipo = String(conta[2] || 'bancaria');
   const itens = db.exec("SELECT id, data_transacao, valor_centavos, descricao FROM itens_importacao WHERE importacao_id = ? AND status = 'pendente'", [importacaoId])[0]?.values ?? [];
   if (!itens.length) throw new Error('Nenhum item pendente para importar.');
   let importados = 0;
+  const inferencias = []; // [{itemId, natureza, motivo}] pra UI mostrar
   db.run('BEGIN');
   try {
     for (const [id, data, valor, descricao] of itens) {
-      // Sinal do valor define a natureza. Positivo = receita, negativo = despesa.
-      // So usa padraoNatureza quando o valor e' 0 (nao acontece pq parser filtra)
-      // ou quando o valor vier sem sinal do OFX antigo (legado).
-      let natureza;
-      if (valor < 0) natureza = 'despesa';
-      else if (valor > 0) natureza = 'receita';
-      else natureza = padraoNatureza === 'receita' ? 'receita' : 'despesa';
+      // Infere natureza automaticamente (sem perguntar pro user)
+      const { natureza, motivo } = inferirNaturezaItem({
+        descricao, valor, contaTipo, contaNome, padraoNatureza,
+      });
+      inferencias.push({ itemId: id, natureza, motivo });
       const idLanc = criarLancamento(db, {
         contextoId: Number(db.exec('SELECT contexto_id FROM importacoes WHERE id = ?', [importacaoId])[0].values[0][0]),
         contaId, natureza,
@@ -209,7 +256,7 @@ export function confirmarImportacao(db, { importacaoId, contaId, padraoNatureza 
     db.run('ROLLBACK');
     throw e;
   }
-  return { importados };
+  return { importados, inferencias };
 }
 
 export function listarImportacoes(db, contextoId) {

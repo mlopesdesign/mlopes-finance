@@ -15,7 +15,7 @@ import { criarTransferencia, listarTransferencias } from '../src/js/backend/core
 import { registrarBaixa, saldoEmAberto, listarBaixas } from '../src/js/backend/core/baixas.js';
 import { criarRecorrencia, gerarProximaOcorrencia } from '../src/js/backend/core/recorrencias.js';
 import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas } from '../src/js/backend/core/cartoes.js';
-import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao } from '../src/js/backend/core/importacao.js';
+import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, inferirNaturezaItem, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao } from '../src/js/backend/core/importacao.js';
 import { balancete, comparativo, exportaCSV, calcularPeriodo } from '../src/js/backend/core/relatorios.js';
 import { aplicarAtualizacao, pathCacheWebView2Async, invalidarCacheWebView2 } from '../src/js/backend/update.js';
 import { excluirContexto, excluirConta, excluirCategoria } from '../src/js/backend/core/financeiro.js';
@@ -1385,4 +1385,81 @@ test('importacao: criarPreviaImportacao nao falha com INSERT OR IGNORE em duplic
   const idImport = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'b.csv', formato: 'csv', conteudo: csv });
   const itens = db.exec('SELECT COUNT(*) FROM itens_importacao WHERE importacao_id = ?', [idImport])[0].values[0][0];
   assert.equal(itens, 1, 'so 1 item foi inserido (3 linhas identicas viram 1)');
+});
+
+// --- inferirNaturezaItem (v0.8.19) ---
+// User pediu: "ele tem que achar sozinho". O app deve inferir a natureza
+// (receita|despesa) sem perguntar, usando heuristicas:
+// 1. Tipo da conta (cartao = sempre despesa)
+// 2. Palavras-chave na descricao (BOLETO -> despesa, PIX RECEBIDO -> receita)
+// 3. Sinal do valor (negativo = despesa)
+// 4. Fallback = padraoNatureza (default despesa)
+test('inferirNaturezaItem: cartao de credito = sempre despesa (mesmo valor positivo)', () => {
+  const r = inferirNaturezaItem({ descricao: 'COMPRA RESTAURANTE', valor: 5000, contaTipo: 'cartao' });
+  assert.equal(r.natureza, 'despesa');
+  assert.ok(r.motivo.includes('cartão'), `motivo deveria mencionar cartão: ${r.motivo}`);
+});
+
+test('inferirNaturezaItem: palavras-chave de despesa (BOLETO, COMPRA, DEBITO, etc)', () => {
+  for (const kw of ['BOLETO', 'COMPRA', 'PAGAMENTO', 'TARIFA', 'JUROS', 'MULTA', 'SAQUE']) {
+    const r = inferirNaturezaItem({ descricao: `${kw} X`, valor: 1000, contaTipo: 'bancaria' });
+    assert.equal(r.natureza, 'despesa', `keyword "${kw}" deveria ser despesa`);
+  }
+});
+
+test('inferirNaturezaItem: palavras-chave de receita (RECEBIDO, SALARIO, CRED, etc)', () => {
+  for (const kw of ['PIX RECEBIDO', 'TED RECEB', 'SALARIO', 'RENDIMENTO', 'DEPOSITO', 'CRED']) {
+    const r = inferirNaturezaItem({ descricao: `${kw} X`, valor: 1000, contaTipo: 'bancaria' });
+    assert.equal(r.natureza, 'receita', `keyword "${kw}" deveria ser receita`);
+  }
+});
+
+test('inferirNaturezaItem: valor negativo = despesa (mesmo sem keyword)', () => {
+  const r = inferirNaturezaItem({ descricao: 'TRANSFERENCIA', valor: -100, contaTipo: 'bancaria' });
+  assert.equal(r.natureza, 'despesa', 'valor negativo deve ser despesa');
+});
+
+test('inferirNaturezaItem: valor positivo sem keyword usa padraoNatureza', () => {
+  const d = inferirNaturezaItem({ descricao: 'COISA GENERICA', valor: 100, contaTipo: 'bancaria', padraoNatureza: 'despesa' });
+  assert.equal(d.natureza, 'despesa');
+  const r = inferirNaturezaItem({ descricao: 'COISA GENERICA', valor: 100, contaTipo: 'bancaria', padraoNatureza: 'receita' });
+  assert.equal(r.natureza, 'receita');
+});
+
+test('confirmarImportacao: retorna inferencias por item', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  // Conta bancaria (nao cartao) pra testar keywords de despesa
+  const c1 = criarConta(db, { contextoId: cid, nome: 'Conta Corrente', tipo: 'bancaria' });
+  const csv = [
+    'data,valor,descricao',
+    '2026-01-15,100.00,BOLETO LUZ',
+    '2026-01-16,500.00,PIX RECEBIDO CLIENTE',
+    '2026-01-17,50.00,COMPRA IFOOD',
+  ].join('\n');
+  const idImport = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'a.csv', formato: 'csv', conteudo: csv });
+  const out = confirmarImportacao(db, { importacaoId: idImport, contaId: c1, padraoNatureza: 'despesa' });
+  assert.equal(out.importados, 3);
+  assert.equal(out.inferencias.length, 3, 'retornou 3 inferencias');
+  // BOLETO -> despesa (keyword)
+  assert.equal(out.inferencias[0].natureza, 'despesa');
+  assert.ok(out.inferencias[0].motivo.includes('BOLETO'), `motivo: ${out.inferencias[0].motivo}`);
+  // PIX RECEBIDO -> receita (keyword)
+  assert.equal(out.inferencias[1].natureza, 'receita');
+  assert.ok(out.inferencias[1].motivo.includes('RECEB'), `motivo: ${out.inferencias[1].motivo}`);
+  // COMPRA IFOOD -> despesa (keyword)
+  assert.equal(out.inferencias[2].natureza, 'despesa');
+  assert.ok(out.inferencias[2].motivo.includes('COMPRA'), `motivo: ${out.inferencias[2].motivo}`);
+});
+
+test('confirmarImportacao: cartao sempre classifica como despesa', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const c1 = criarConta(db, { contextoId: cid, nome: 'Cartao Nubank', tipo: 'cartao' });
+  const csv = 'data,valor,descricao\n2026-01-15,500.00,PIX RECEBIDO CLIENTE';
+  const idImport = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'b.csv', formato: 'csv', conteudo: csv });
+  const out = confirmarImportacao(db, { importacaoId: idImport, contaId: c1 });
+  // Mesma palavra-chave "RECEB" sugere receita, mas cartao sempre = despesa
+  assert.equal(out.inferencias[0].natureza, 'despesa', 'cartao SEMPRE = despesa (mesmo com keyword de receita)');
+  assert.ok(out.inferencias[0].motivo.includes('cartão'));
 });
