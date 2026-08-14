@@ -1355,3 +1355,34 @@ test('excluirTodosLancamentos: idempotente (rodar 2x da certo)', async () => {
   const r2 = excluirTodosLancamentos(db, cid);
   assert.equal(r2.excluidos, 0, 'segunda chamada nao exclui nada');
 });
+
+// --- criarPreviaImportacao: dedup dentro do arquivo (v0.8.18) ---
+// Bug historico: extrato do banco vinha com 2 linhas identicas (mesma data+valor+descricao).
+// O INSERT dava UNIQUE constraint failed na chave_externa. Corrigido com dedup
+// ANTES do INSERT + INSERT OR IGNORE por seguranca.
+test('importacao: criarPreviaImportacao dedup dentro do arquivo (mesma transacao 2x)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  // CSV com 2 linhas identicas + 1 diferente
+  const csv = [
+    'data,valor,descricao',
+    '2026-01-15,100.00,COMPRA MERCADO',
+    '2026-01-15,100.00,COMPRA MERCADO', // duplicata exata
+    '2026-01-20,50.00,COMPRA FARMACIA',
+  ].join('\n');
+  const idImport = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'a.csv', formato: 'csv', conteudo: csv });
+  const itens = db.exec('SELECT data_transacao, valor_centavos, descricao FROM itens_importacao WHERE importacao_id = ?', [idImport])[0].values;
+  assert.equal(itens.length, 2, '2 itens unicos (duplicata eliminada)');
+  const totais = db.exec('SELECT total_registros FROM importacoes WHERE id = ?', [idImport])[0].values[0][0];
+  assert.equal(totais, 3, 'total_registros preserva o original (3 linhas do CSV)');
+});
+
+test('importacao: criarPreviaImportacao nao falha com INSERT OR IGNORE em duplicata exata', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const csv = 'data,valor,descricao\n2026-01-15,100.00,X\n2026-01-15,100.00,X\n2026-01-15,100.00,X';
+  // Antes do fix, dava UNIQUE constraint failed. Agora deve passar e manter so 1.
+  const idImport = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'b.csv', formato: 'csv', conteudo: csv });
+  const itens = db.exec('SELECT COUNT(*) FROM itens_importacao WHERE importacao_id = ?', [idImport])[0].values[0][0];
+  assert.equal(itens, 1, 'so 1 item foi inserido (3 linhas identicas viram 1)');
+});

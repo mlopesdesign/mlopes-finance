@@ -144,8 +144,22 @@ export function criarPreviaImportacao(db, { contextoId, arquivoOrigem, formato, 
   db.run(`INSERT INTO importacoes (contexto_id, arquivo_origem, formato, hash_arquivo, total_registros, mapeamento_csv, status) VALUES (?, ?, ?, ?, ?, ?, 'previa')`,
     [contextoId, arquivoOrigem, formato, hash, itens.length, mapeamentoCsv]);
   const idImport = Number(db.exec('SELECT last_insert_rowid() AS id')[0].values[0][0]);
+  // Dedup DENTRO do arquivo: linhas com mesma chave_externa (data+valor+descricao)
+  // sao a mesma transacao listada 2x pelo banco. O UNIQUE(importacao_id, chave_externa)
+  // impede inserir 2 com a mesma chave, entao a dedup tem que ser ANTES do INSERT.
+  // As duplicatas internas nao sao inseridas (a UI lista os pendentes e ja tem
+  // mecanismo pra detectar duplicatas contra lancamentos existentes).
+  const seen = new Set();
+  const itensUnicos = [];
   for (const it of itens) {
-    db.run(`INSERT INTO itens_importacao (importacao_id, conta_id, data_transacao, valor_centavos, descricao, chave_externa) VALUES (?, NULL, ?, ?, ?, ?)`,
+    if (seen.has(it.chave_externa)) continue;
+    seen.add(it.chave_externa);
+    itensUnicos.push(it);
+  }
+  // INSERT OR IGNORE por seguranca (se dois processos importarem o mesmo arquivo ao
+  // mesmo tempo, o UNIQUE faz o segundo ser ignorado em vez de explodir).
+  for (const it of itensUnicos) {
+    db.run(`INSERT OR IGNORE INTO itens_importacao (importacao_id, conta_id, data_transacao, valor_centavos, descricao, chave_externa) VALUES (?, NULL, ?, ?, ?, ?)`,
       [idImport, it.data_transacao, it.valor_centavos, it.descricao, it.chave_externa]);
   }
   // Detecta duplicados contra lancamentos ja existentes (mesma data + valor absoluto + descricao).
