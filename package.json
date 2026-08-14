@@ -1,6 +1,6 @@
 {
   "name": "mlopes-finance",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,12 +12,10 @@
     "graphify": "node tools/graphify.mjs"
   },
   "dependencies": {
+    "pdfjs-dist": "^4.10.38",
     "sql.js": "^1.13.0"
   },
   "devDependencies": {
     "@neutralinojs/neu": "^11.0.0"
   }
 }
-
-
-

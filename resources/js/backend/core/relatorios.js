@@ -300,3 +300,302 @@ export function exportaCSV(blc) {
 
   return meta.join('\n') + [headerLinha, ...corpoLinhas, totalLinha].join('\n') + '\n';
 }
+
+// === v0.10.0: Motor Financeiro (relatorios avancados + alertas) ===
+
+/**
+ * Retorna os ultimos N meses em serie temporal com receitas/despesas/saldo por mes.
+ * Formato: [{ mes: 'YYYY-MM', receitas, despesas, saldo, qtdLancamentos }].
+ * Os meses SEM lancamentos vem com zeros (preenche gaps).
+ */
+export function gastosPorMes(db, contextoId, meses = 12) {
+  if (!Number.isInteger(contextoId)) throw new Error('contextoId obrigatorio.');
+  if (!Number.isInteger(meses) || meses < 1 || meses > 60) throw new Error('meses deve ser 1..60.');
+  const hoje = new Date();
+  const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - (meses - 1), 1);
+  const inicioISO = inicio.toISOString().slice(0, 10);
+  // Query unica agrega por mes
+  const rows = db.exec(`
+    SELECT substr(data_competencia, 1, 7) AS mes,
+           SUM(CASE WHEN natureza = 'receita' THEN valor_centavos ELSE 0 END) AS receitas,
+           SUM(CASE WHEN natureza = 'despesa' THEN valor_centavos ELSE 0 END) AS despesas,
+           COUNT(*) AS qtd
+    FROM lancamentos
+    WHERE contexto_id = ? AND data_competencia >= ? AND status != 'estornado'
+    GROUP BY mes
+    ORDER BY mes
+  `, [contextoId, inicioISO])[0]?.values ?? [];
+  const map = new Map(rows.map(([mes, rec, desp, qtd]) => [mes, { mes, receitas: Number(rec), despesas: Number(desp), qtd: Number(qtd) }]));
+  // Preenche gaps
+  const resultado = [];
+  for (let i = 0; i < meses; i++) {
+    const d = new Date(inicio.getFullYear(), inicio.getMonth() + i, 1);
+    const mes = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const r = map.get(mes) ?? { mes, receitas: 0, despesas: 0, qtd: 0 };
+    r.saldo = r.receitas - r.despesas;
+    resultado.push(r);
+  }
+  return resultado;
+}
+
+/**
+ * Top N categorias por despesa no periodo.
+ * Retorna: [{ categoriaId, categoria, totalCentavos, qtd, percentual }].
+ * percentual = quanto do total de despesas essa categoria representa.
+ */
+export function topCategorias(db, contextoId, dataInicio, dataFim, limite = 10) {
+  if (!Number.isInteger(contextoId)) throw new Error('contextoId obrigatorio.');
+  const rows = db.exec(`
+    SELECT l.categoria_id, COALESCE(ca.nome, '(sem categoria)') AS categoria,
+           SUM(l.valor_centavos) AS total, COUNT(*) AS qtd
+    FROM lancamentos l
+    LEFT JOIN categorias ca ON ca.id = l.categoria_id
+    WHERE l.contexto_id = ? AND l.natureza = 'despesa'
+      AND l.data_competencia BETWEEN ? AND ? AND l.status != 'estornado'
+    GROUP BY l.categoria_id
+    ORDER BY total DESC
+    LIMIT ?
+  `, [contextoId, dataInicio, dataFim, limite])[0]?.values ?? [];
+  // Calcula total de despesas pra percentual
+  const totalGeral = db.exec(
+    `SELECT COALESCE(SUM(valor_centavos), 0) FROM lancamentos
+     WHERE contexto_id = ? AND natureza = 'despesa' AND data_competencia BETWEEN ? AND ? AND status != 'estornado'`,
+    [contextoId, dataInicio, dataFim]
+  )[0]?.values?.[0]?.[0] ?? 0;
+  const totalNum = Number(totalGeral);
+  return rows.map(([id, nome, total, qtd]) => ({
+    categoriaId: id == null ? null : Number(id),
+    categoria: String(nome),
+    totalCentavos: Number(total),
+    qtd: Number(qtd),
+    percentual: totalNum > 0 ? (Number(total) / totalNum) * 100 : 0,
+  }));
+}
+
+/**
+ * Top N despesas individuais (lancamentos) no periodo.
+ * Retorna: [{ lancamentoId, data, descricao, categoria, totalCentavos }].
+ */
+export function topDespesas(db, contextoId, dataInicio, dataFim, limite = 10) {
+  if (!Number.isInteger(contextoId)) throw new Error('contextoId obrigatorio.');
+  const rows = db.exec(`
+    SELECT l.id, l.data_competencia, l.descricao,
+           COALESCE(ca.nome, '(sem)') AS categoria, l.valor_centavos
+    FROM lancamentos l
+    LEFT JOIN categorias ca ON ca.id = l.categoria_id
+    WHERE l.contexto_id = ? AND l.natureza = 'despesa'
+      AND l.data_competencia BETWEEN ? AND ? AND l.status != 'estornado'
+    ORDER BY l.valor_centavos DESC
+    LIMIT ?
+  `, [contextoId, dataInicio, dataFim, limite])[0]?.values ?? [];
+  return rows.map(([id, data, desc, cat, valor]) => ({
+    lancamentoId: Number(id),
+    data: String(data),
+    descricao: String(desc),
+    categoria: String(cat),
+    totalCentavos: Number(valor),
+  }));
+}
+
+/**
+ * Gastos por conta no periodo, separado por tipo (bancaria/investimento/cartao).
+ * Retorna: [{ contaId, conta, tipo, totalDespesas, qtd, cartaoFatura }].
+ * cartaoFatura so vem preenchido se a conta for tipo 'cartao'.
+ */
+export function gastosPorConta(db, contextoId, dataInicio, dataFim) {
+  if (!Number.isInteger(contextoId)) throw new Error('contextoId obrigatorio.');
+  const rows = db.exec(`
+    SELECT c.id, c.nome, c.tipo,
+           COALESCE(SUM(CASE WHEN l.natureza = 'despesa' THEN l.valor_centavos ELSE 0 END), 0) AS totalDespesas,
+           COUNT(l.id) AS qtd
+    FROM contas c
+    LEFT JOIN lancamentos l ON l.conta_id = c.id
+      AND l.data_competencia BETWEEN ? AND ? AND l.status != 'estornado'
+    WHERE c.contexto_id = ? AND c.ativo = 1
+    GROUP BY c.id
+    ORDER BY totalDespesas DESC
+  `, [dataInicio, dataFim, contextoId])[0]?.values ?? [];
+  return rows.map(([id, nome, tipo, total, qtd]) => ({
+    contaId: Number(id),
+    conta: String(nome),
+    tipo: String(tipo),
+    totalDespesas: Number(total),
+    qtd: Number(qtd),
+  }));
+}
+
+/**
+ * Faturas de cartao que vencem nos proximos N dias (a partir de hoje).
+ * Considera faturas com status 'aberta' ou 'fechada' e data_vencimento entre hoje e hoje+N.
+ * Retorna: [{ cartaoId, cartao, faturaId, ciclo, dataVencimento, totalCentavos, pagoCentavos, restanteCentavos, diasAteVencer }].
+ */
+export function faturasAVencer(db, contextoId, diasFuturos = 30) {
+  if (!Number.isInteger(contextoId)) throw new Error('contextoId obrigatorio.');
+  const hoje = new Date().toISOString().slice(0, 10);
+  const limite = new Date();
+  limite.setDate(limite.getDate() + diasFuturos);
+  const limiteISO = limite.toISOString().slice(0, 10);
+  const rows = db.exec(`
+    SELECT f.id, f.cartao_id, ca.nome, f.ciclo, f.data_vencimento,
+           f.valor_total_centavos, f.valor_pago_centavos, f.status
+    FROM faturas f
+    JOIN cartoes ca ON ca.id = f.cartao_id
+    WHERE ca.contexto_id = ?
+      AND f.data_vencimento BETWEEN ? AND ?
+      AND f.status IN ('aberta', 'fechada')
+    ORDER BY f.data_vencimento
+  `, [contextoId, hoje, limiteISO])[0]?.values ?? [];
+  const hojeDate = new Date(hoje);
+  return rows.map(([fId, cId, cNome, ciclo, dataVenc, total, pago, status]) => {
+    const vencDate = new Date(dataVenc);
+    const dias = Math.round((vencDate - hojeDate) / (1000 * 60 * 60 * 24));
+    return {
+      faturaId: Number(fId),
+      cartaoId: Number(cId),
+      cartao: String(cNome),
+      ciclo: String(ciclo),
+      dataVencimento: String(dataVenc),
+      totalCentavos: Number(total),
+      pagoCentavos: Number(pago),
+      restanteCentavos: Math.max(0, Number(total) - Number(pago)),
+      status: String(status),
+      diasAteVencer: dias,
+    };
+  });
+}
+
+/**
+ * Variacao mensal: receitas, despesas e saldo do mes atual vs mes anterior, com delta % e sinal.
+ * Retorna: { mesAtual: {inicio, fim, receitas, despesas, saldo}, mesAnterior: {...}, delta: {receitas, despesas, saldo, variacaoReceitas%, variacaoDespesas%, variacaoSaldo%} }.
+ */
+export function variacaoMensal(db, contextoId) {
+  if (!Number.isInteger(contextoId)) throw new Error('contextoId obrigatorio.');
+  const { inicio, fim, anterior } = calcularPeriodo('este_mes');
+  const fmt = (d) => d.toISOString().slice(0, 10);
+  const sum = (ini, fi) => {
+    const r = db.exec(
+      `SELECT
+         COALESCE(SUM(CASE WHEN natureza = 'receita' THEN valor_centavos ELSE 0 END), 0) AS receitas,
+         COALESCE(SUM(CASE WHEN natureza = 'despesa' THEN valor_centavos ELSE 0 END), 0) AS despesas
+       FROM lancamentos
+       WHERE contexto_id = ? AND data_competencia BETWEEN ? AND ? AND status != 'estornado'`,
+      [contextoId, ini, fi]
+    )[0]?.values?.[0] ?? [0, 0];
+    const receitas = Number(r[0]);
+    const despesas = Number(r[1]);
+    return { receitas, despesas, saldo: receitas - despesas };
+  };
+  const atual = { ...sum(fmt(inicio), fmt(fim)), inicio: fmt(inicio), fim: fmt(fim) };
+  const ant = { ...sum(fmt(anterior.inicio), fmt(anterior.fim)), inicio: fmt(anterior.inicio), fim: fmt(anterior.fim) };
+  const pct = (a, b) => {
+    if (b === 0) return a === 0 ? 0 : 100;
+    return ((a - b) / b) * 100;
+  };
+  return {
+    mesAtual: atual,
+    mesAnterior: ant,
+    delta: {
+      receitas: atual.receitas - ant.receitas,
+      despesas: atual.despesas - ant.despesas,
+      saldo: atual.saldo - ant.saldo,
+      variacaoReceitasPct: pct(atual.receitas, ant.receitas),
+      variacaoDespesasPct: pct(atual.despesas, ant.despesas),
+      variacaoSaldoPct: pct(atual.saldo, ant.saldo),
+    },
+  };
+}
+
+/**
+ * v0.10.0: Lista de alertas contextuais pra mostrar no topo da app.
+ * Cada alerta: { tipo: 'fatura'|'cartao'|'gasto', severidade: 'info'|'warn'|'crit', titulo, mensagem, acao? }.
+ * - Fatura: vence em <= 3 dias OU valor_total > 50% do limite do cartao
+ * - Cartao: limite usado > 80%
+ * - Gasto: variacao de despesa > 30% vs mes anterior
+ */
+export function alertas(db, contextoId) {
+  if (!Number.isInteger(contextoId)) throw new Error('contextoId obrigatorio.');
+  const out = [];
+  // 1. Faturas proximas do vencimento (3 dias) ou com valor alto
+  const faturas = faturasAVencer(db, contextoId, 30);
+  for (const f of faturas) {
+    if (f.diasAteVencer <= 3 && f.diasAteVencer >= 0 && f.restanteCentavos > 0) {
+      out.push({
+        tipo: 'fatura',
+        severidade: f.diasAteVencer <= 1 ? 'crit' : 'warn',
+        titulo: `Fatura ${f.cartao} ${f.ciclo} ${f.diasAteVencer === 0 ? 'vence hoje' : 'vence em ' + f.diasAteVencer + ' dia(s)'}`,
+        mensagem: `R$ ${(f.restanteCentavos / 100).toFixed(2)} em aberto, vencimento ${f.dataVencimento}.`,
+        acao: { view: 'faturas', cartaoId: f.cartaoId },
+      });
+    }
+  }
+  // 2. Cartoes com limite usado > 80%
+  const cartoes = db.exec(`
+    SELECT ca.id, ca.nome, ca.limite_centavos,
+           COALESCE((SELECT SUM(valor_total_centavos - valor_pago_centavos) FROM faturas WHERE cartao_id = ca.id AND status IN ('aberta','fechada')), 0) AS emAberto
+    FROM cartoes ca WHERE ca.contexto_id = ? AND ca.ativo = 1 AND ca.limite_centavos > 0
+  `, [contextoId])[0]?.values ?? [];
+  for (const [id, nome, limite, emAberto] of cartoes) {
+    const lim = Number(limite);
+    const emA = Number(emAberto);
+    if (lim > 0 && emA / lim > 0.8) {
+      const pct = Math.round((emA / lim) * 100);
+      out.push({
+        tipo: 'cartao',
+        severidade: emA / lim > 0.95 ? 'crit' : 'warn',
+        titulo: `Cartao ${nome} com ${pct}% do limite usado`,
+        mensagem: `R$ ${(emA / 100).toFixed(2)} em aberto de R$ ${(lim / 100).toFixed(2)} (limite).`,
+        acao: { view: 'faturas', cartaoId: Number(id) },
+      });
+    }
+  }
+  // 3. Variacao de gasto > 30%
+  const v = variacaoMensal(db, contextoId);
+  if (v.mesAnterior.despesas > 0 && Math.abs(v.delta.variacaoDespesasPct) > 30) {
+    const sinal = v.delta.variacaoDespesasPct > 0 ? 'a mais' : 'a menos';
+    out.push({
+      tipo: 'gasto',
+      severidade: v.delta.variacaoDespesasPct > 50 ? 'warn' : 'info',
+      titulo: `Voce gastou ${Math.abs(v.delta.variacaoDespesasPct).toFixed(0)}% ${sinal} esse mes`,
+      mensagem: `Despesa atual R$ ${(v.mesAtual.despesas / 100).toFixed(2)} vs anterior R$ ${(v.mesAnterior.despesas / 100).toFixed(2)}.`,
+    });
+  }
+  return out;
+}
+
+/**
+ * v0.10.0: Exporta TODOS os lancamentos do periodo (nao so o balancete) como CSV detalhado.
+ * Colunas: Data, Descricao, Categoria, Conta, Natureza, Valor, Status.
+ */
+export function exportarMovimentosCSV(db, contextoId, dataInicio, dataFim) {
+  if (!Number.isInteger(contextoId)) throw new Error('contextoId obrigatorio.');
+  if (!dataInicio || !dataFim) throw new Error('dataInicio e dataFim obrigatorios.');
+  const rows = db.exec(`
+    SELECT l.data_competencia, l.descricao,
+           COALESCE(ca.nome, '') AS categoria, COALESCE(c.nome, '') AS conta,
+           l.natureza, l.valor_centavos, l.status
+    FROM lancamentos l
+    LEFT JOIN categorias ca ON ca.id = l.categoria_id
+    LEFT JOIN contas c ON c.id = l.conta_id
+    WHERE l.contexto_id = ? AND l.data_competencia BETWEEN ? AND ?
+    ORDER BY l.data_competencia, l.id
+  `, [contextoId, dataInicio, dataFim])[0]?.values ?? [];
+  const escape = (s) => {
+    const str = String(s ?? '');
+    if (/[",\n;]/.test(str)) return '"' + str.replaceAll('"', '""') + '"';
+    return str;
+  };
+  const fmtBRL = (c) => (Number(c) / 100).toFixed(2).replace('.', ',');
+  const header = ['Data', 'Descricao', 'Categoria', 'Conta', 'Natureza', 'Valor (R$)', 'Status'];
+  const linhas = rows.map(([data, desc, cat, conta, nat, valor, status]) => [
+    data, desc, cat, conta, nat, fmtBRL(valor), status,
+  ]);
+  const sep = ';';
+  const meta = [
+    `# MLopes Finance - Movimentos detalhados`,
+    `# Contexto: ${contextoId}`,
+    `# Periodo: ${dataInicio} a ${dataFim}`,
+    `# Total de lancamentos: ${rows.length}`,
+    ``,
+  ];
+  return meta.join('\n') + [header.map(escape).join(sep), ...linhas.map(r => r.map(escape).join(sep))].join('\n') + '\n';
+}

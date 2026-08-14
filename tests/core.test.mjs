@@ -15,8 +15,9 @@ import { criarTransferencia, listarTransferencias } from '../src/js/backend/core
 import { registrarBaixa, saldoEmAberto, listarBaixas } from '../src/js/backend/core/baixas.js';
 import { criarRecorrencia, gerarProximaOcorrencia } from '../src/js/backend/core/recorrencias.js';
 import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas, atualizarCartao, excluirCartao, calcularCicloDaCompra, listarFaturasDetalhadas, listarLancamentosDaFatura, faturaAtualDoCartao } from '../src/js/backend/core/cartoes.js';
+import { criarCustoFixo, listarCustosFixos, totalCustosFixosMes, resumoCustosFixosMes, gerarOcorrenciasMesAtual, alternarCustoFixo, excluirCustoFixo } from '../src/js/backend/core/custosFixos.js';
 import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, inferirNaturezaItem, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao } from '../src/js/backend/core/importacao.js';
-import { balancete, comparativo, exportaCSV, calcularPeriodo } from '../src/js/backend/core/relatorios.js';
+import { balancete, comparativo, exportaCSV, calcularPeriodo, gastosPorMes, topCategorias, topDespesas, gastosPorConta, faturasAVencer, variacaoMensal, alertas, exportarMovimentosCSV } from '../src/js/backend/core/relatorios.js';
 import { aplicarAtualizacao, pathCacheWebView2Async, invalidarCacheWebView2 } from '../src/js/backend/update.js';
 import { excluirContexto, excluirConta, excluirCategoria, saldoPorConta } from '../src/js/backend/core/financeiro.js';
 import { excluirCliente, excluirFornecedor, excluirProjeto, excluirCentroCusto, excluirTag, desvincularTagLancamento } from '../src/js/backend/core/cadastros.js';
@@ -1852,4 +1853,213 @@ test('dashboard: faturaAtualDoCartao retorna fatura aberta/fechada mais proxima'
   const f1 = faturaAtualDoCartao(db, r.cartaoId);
   assert.ok(f1.fatura, 'fatura do ciclo atual');
   assert.equal(f1.fatura.ciclo, cicloAtual);
+});
+
+// --- v0.10.0: Custos Fixos ---
+
+test('custosFixos: criarCustoFixo cria template + recorrencia em 1 passo', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  const r = criarCustoFixo(db, { contextoId: cid, descricao: 'Aluguel', valorCentavos: 150000, contaId: cb, diaDoMes: 10 });
+  assert.ok(r.id > 0, 'template criado');
+  assert.ok(r.recorrenciaId > 0, 'recorrencia criada');
+  // Lista
+  const lista = listarCustosFixos(db, cid);
+  assert.equal(lista.length, 1);
+  assert.equal(lista[0].descricao, 'Aluguel');
+  assert.equal(lista[0].valorCentavos, 150000);
+  assert.equal(lista[0].diaDoMes, 10);
+  assert.equal(lista[0].contaNome, 'BB');
+  assert.equal(lista[0].ativo, true);
+});
+
+test('custosFixos: totalCustosFixosMes soma apenas ativos', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  criarCustoFixo(db, { contextoId: cid, descricao: 'Aluguel', valorCentavos: 150000, contaId: cb, diaDoMes: 10 });
+  criarCustoFixo(db, { contextoId: cid, descricao: 'Internet', valorCentavos: 12000, contaId: cb, diaDoMes: 15 });
+  const cf3 = criarCustoFixo(db, { contextoId: cid, descricao: 'Netflix', valorCentavos: 5500, contaId: cb, diaDoMes: 20 });
+  // Pausa o Netflix
+  alternarCustoFixo(db, cf3.id, false);
+  const t = totalCustosFixosMes(db, cid);
+  assert.equal(t.totalCentavos, 150000 + 12000, 'soma so ativos: 1500+120 = 1620');
+  assert.equal(t.qtdCustosFixos, 2, 'so 2 ativos');
+});
+
+test('custosFixos: gerarOcorrenciasMesAtual gera 1 lancamento por custo fixo', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  criarCustoFixo(db, { contextoId: cid, descricao: 'Aluguel', valorCentavos: 150000, contaId: cb, diaDoMes: 10 });
+  criarCustoFixo(db, { contextoId: cid, descricao: 'Internet', valorCentavos: 12000, contaId: cb, diaDoMes: 15 });
+  const out = gerarOcorrenciasMesAtual(db, cid);
+  assert.equal(out.totalGerado, 2, 'gerou 2 lancamentos no mes atual');
+  // Verifica que foram criados
+  const resumo = resumoCustosFixosMes(db, cid);
+  assert.equal(resumo.totalPagoCentavos, 150000 + 12000);
+  assert.equal(resumo.percentualPago, 100, '100% pago (todos gerados)');
+  // Gerar de novo nao faz nada
+  const out2 = gerarOcorrenciasMesAtual(db, cid);
+  assert.equal(out2.totalGerado, 0, 'segunda geracao nao faz nada (ja estao gerados)');
+});
+
+test('custosFixos: resumoCustosFixosMes retorna custosFixos com flag gerado', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  const cf = criarCustoFixo(db, { contextoId: cid, descricao: 'Aluguel', valorCentavos: 150000, contaId: cb, diaDoMes: 10 });
+  // Antes de gerar
+  let r = resumoCustosFixosMes(db, cid);
+  assert.equal(r.custosFixos.length, 1);
+  assert.equal(r.custosFixos[0].gerado, false);
+  assert.equal(r.custosFixos[0].lancamentoId, null);
+  assert.equal(r.totalPagoCentavos, 0);
+  // Apos gerar
+  gerarOcorrenciasMesAtual(db, cid);
+  r = resumoCustosFixosMes(db, cid);
+  assert.equal(r.custosFixos[0].gerado, true);
+  assert.ok(r.custosFixos[0].lancamentoId > 0);
+  assert.equal(r.totalPagoCentavos, 150000);
+  assert.equal(r.custosFixos[0].statusGerado, 'aberto');
+});
+
+test('custosFixos: excluirCustoFixo sem cascade pausa (mantem historico)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  const cf = criarCustoFixo(db, { contextoId: cid, descricao: 'X', valorCentavos: 100, contaId: cb, diaDoMes: 5 });
+  const r = excluirCustoFixo(db, cf.id);
+  assert.equal(r.ok, true);
+  assert.equal(r.ativa, false, 'pausado (nao excluido)');
+  // Lista mostra como inativo
+  const lista = listarCustosFixos(db, cid);
+  assert.equal(lista[0].ativo, false);
+  // Total mensal desconsidera
+  assert.equal(totalCustosFixosMes(db, cid).totalCentavos, 0);
+});
+
+test('custosFixos: excluirCustoFixo com cascade apaga template e recorrencia', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  const cf = criarCustoFixo(db, { contextoId: cid, descricao: 'X', valorCentavos: 100, contaId: cb, diaDoMes: 5 });
+  const r = excluirCustoFixo(db, cf.id, { cascade: true });
+  assert.equal(r.ok, true);
+  assert.equal(r.cascade, true);
+  // Template deletado
+  const tplExiste = db.exec('SELECT id FROM lancamentos WHERE id = ?', [cf.id])[0]?.values?.length ?? 0;
+  assert.equal(tplExiste, 0, 'template deletado');
+  // Recorrencia deletada
+  const recExiste = db.exec('SELECT id FROM recorrencias WHERE id = ?', [cf.recorrenciaId])[0]?.values?.length ?? 0;
+  assert.equal(recExiste, 0, 'recorrencia deletada');
+});
+
+test('custosFixos: rejeita diaDoMes invalido (0 ou >31)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  assert.throws(() => criarCustoFixo(db, { contextoId: cid, descricao: 'X', valorCentavos: 100, contaId: cb, diaDoMes: 0 }), /1\.\.31/);
+  assert.throws(() => criarCustoFixo(db, { contextoId: cid, descricao: 'X', valorCentavos: 100, contaId: cb, diaDoMes: 32 }), /1\.\.31/);
+});
+
+// --- v0.10.0: Relatorios avancados (motor financeiro) ---
+
+test('relatorios: gastosPorMes retorna N meses com zeros pra meses sem lancamentos', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'X', tipo: 'bancaria' });
+  // Lancamento so no mes atual
+  const hoje = new Date();
+  const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-15`;
+  criarLancamento(db, { contextoId: cid, contaId: cb, natureza: 'despesa', valorCentavos: 10000, dataCompetencia: mesAtual, descricao: 'X' });
+  const r = gastosPorMes(db, cid, 12);
+  assert.equal(r.length, 12);
+  // Todos os meses antigos = 0
+  const totalReceitas = r.reduce((s, m) => s + m.receitas, 0);
+  const totalDespesas = r.reduce((s, m) => s + m.despesas, 0);
+  assert.equal(totalDespesas, 10000);
+  assert.equal(totalReceitas, 0);
+  // O mes atual tem o valor
+  const m = r.find(x => x.mes === mesAtual.slice(0, 7));
+  assert.equal(m.despesas, 10000);
+});
+
+test('relatorios: topCategorias ordena por total e calcula percentual', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'X', tipo: 'bancaria' });
+  const cat1 = criarCategoria(db, { contextoId: cid, nome: 'Mercado', natureza: 'despesa' });
+  const cat2 = criarCategoria(db, { contextoId: cid, nome: 'Lazer', natureza: 'despesa' });
+  criarLancamento(db, { contextoId: cid, contaId: cb, categoriaId: cat1, natureza: 'despesa', valorCentavos: 30000, dataCompetencia: '2026-08-01', descricao: 'A' });
+  criarLancamento(db, { contextoId: cid, contaId: cb, categoriaId: cat2, natureza: 'despesa', valorCentavos: 10000, dataCompetencia: '2026-08-02', descricao: 'B' });
+  const t = topCategorias(db, cid, '2026-08-01', '2026-08-31', 10);
+  assert.equal(t.length, 2);
+  assert.equal(t[0].categoria, 'Mercado', 'maior primeiro');
+  assert.equal(t[0].totalCentavos, 30000);
+  assert.equal(t[0].percentual, 75, '75% do total');
+  assert.equal(t[1].categoria, 'Lazer');
+  assert.equal(t[1].percentual, 25);
+});
+
+test('relatorios: topDespesas retorna as N maiores despesas', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'X', tipo: 'bancaria' });
+  criarLancamento(db, { contextoId: cid, contaId: cb, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-08-01', descricao: 'P' });
+  criarLancamento(db, { contextoId: cid, contaId: cb, natureza: 'despesa', valorCentavos: 50000, dataCompetencia: '2026-08-02', descricao: 'G' });
+  criarLancamento(db, { contextoId: cid, contaId: cb, natureza: 'despesa', valorCentavos: 5000, dataCompetencia: '2026-08-03', descricao: 'M' });
+  const t = topDespesas(db, cid, '2026-08-01', '2026-08-31', 3);
+  assert.equal(t.length, 3);
+  assert.equal(t[0].descricao, 'G');
+  assert.equal(t[0].totalCentavos, 50000);
+  assert.equal(t[2].totalCentavos, 100);
+});
+
+test('relatorios: variacaoMensal calcula delta % corretamente', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'X', tipo: 'bancaria' });
+  // Pega o mes anterior dinamicamente
+  const hoje = new Date();
+  const mesAnterior = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 15);
+  const isoAnterior = mesAnterior.toISOString().slice(0, 10);
+  criarLancamento(db, { contextoId: cid, contaId: cb, natureza: 'despesa', valorCentavos: 10000, dataCompetencia: isoAnterior, descricao: 'A' });
+  criarLancamento(db, { contextoId: cid, contaId: cb, natureza: 'despesa', valorCentavos: 15000, dataCompetencia: isoAnterior, descricao: 'B' });
+  const v = variacaoMensal(db, cid);
+  assert.equal(v.mesAnterior.despesas, 25000);
+  assert.equal(v.mesAtual.despesas, 0);
+  assert.equal(v.delta.variacaoDespesasPct, -100, '-100% (zero no atual)');
+});
+
+test('relatorios: alertas detecta fatura proxima do vencimento', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  const r = criarCartao(db, { contextoId: cid, nome: 'Nubank', limiteCentavos: 100000, diaFechamento: 5, diaVencimento: 15, contaPagamentoId: cb });
+  // Cria fatura que vence em 2 dias
+  const hoje = new Date();
+  const venc = new Date(hoje.getTime() + 2 * 24 * 60 * 60 * 1000);
+  const ciclo = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+  abrirFatura(db, { cartaoId: r.cartaoId, ciclo, dataFechamento: `${ciclo}-05`, dataVencimento: venc.toISOString().slice(0, 10) });
+  // Adiciona valor
+  db.run('UPDATE faturas SET valor_total_centavos = 50000, valor_pago_centavos = 0 WHERE cartao_id = ? AND ciclo = ?', [r.cartaoId, ciclo]);
+  const a = alertas(db, cid);
+  const faturaAlert = a.find(x => x.tipo === 'fatura');
+  assert.ok(faturaAlert, 'tem alerta de fatura');
+  assert.ok(faturaAlert.titulo.includes('2 dia') || faturaAlert.titulo.includes('vence'));
+});
+
+test('relatorios: exportarMovimentosCSV gera CSV com header e linhas', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  criarLancamento(db, { contextoId: cid, contaId: cb, natureza: 'despesa', valorCentavos: 10000, dataCompetencia: '2026-08-01', descricao: 'A;B,C' });
+  const csv = exportarMovimentosCSV(db, cid, '2026-08-01', '2026-08-31');
+  assert.ok(csv.startsWith('# MLopes'), 'comeca com header');
+  assert.ok(csv.includes('A;B,C'), 'descricao com caracteres especiais escapados ou como esta');
+  // A descricao "A;B,C" tem virgula e ;, vai ser escapada
+  assert.ok(csv.includes('"A;B,C"') || csv.includes('A;B,C'), 'descricao presente');
+  assert.ok(csv.includes('100,00'), 'valor em formato BR');
 });

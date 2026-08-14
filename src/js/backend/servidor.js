@@ -6,9 +6,10 @@ import { criarCliente, listarClientes, atualizarCliente, criarFornecedor, listar
 import { criarTransferencia, listarTransferencias, excluirTransferencia } from './core/transferencias.js';
 import { registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa } from './core/baixas.js';
 import { criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias, excluirRecorrencia, desativarRecorrencia } from './core/recorrencias.js';
+import { criarCustoFixo, listarCustosFixos, totalCustosFixosMes, resumoCustosFixosMes, gerarOcorrenciasMesAtual, alternarCustoFixo, excluirCustoFixo } from './core/custosFixos.js';
 import { criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura, atualizarCartao, excluirCartao, listarFaturasDetalhadas, listarLancamentosDaFatura, calcularCicloDaCompra, faturaAtualDoCartao } from './core/cartoes.js';
 import { criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao } from './core/importacao.js';
-import { balancete, comparativo, exportaCSV } from './core/relatorios.js';
+import { balancete, comparativo, exportaCSV, gastosPorMes, topCategorias, topDespesas, gastosPorConta, faturasAVencer, variacaoMensal, alertas, exportarMovimentosCSV } from './core/relatorios.js';
 import { compararVersao } from './core/update.js';
 import { checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, listarReleases, pathTempInstalador } from './update.js';
 import { APP_VERSION } from './ambiente.js';
@@ -88,6 +89,14 @@ export function criarApi(db, persistir = () => {}) {
     'recorrencias:listar': (d) => listarRecorrencias(db, d.contextoId),
     'recorrencias:excluir': (d) => { const r = excluirRecorrencia(db, d.id, { cascade: d.cascade === true }); persistir(); return r; },
     'recorrencias:desativar': (d) => { const r = desativarRecorrencia(db, d.id); persistir(); return r; },
+    // v0.10.0: Custos Fixos (interface simplificada em cima de recorrencias)
+    'custosFixos:criar': (d) => { const r = criarCustoFixo(db, d); persistir(); return r; },
+    'custosFixos:listar': (d) => listarCustosFixos(db, d.contextoId),
+    'custosFixos:totalMes': (d) => totalCustosFixosMes(db, d.contextoId),
+    'custosFixos:resumoMes': (d) => resumoCustosFixosMes(db, d.contextoId),
+    'custosFixos:gerarMesAtual': (d) => { const r = gerarOcorrenciasMesAtual(db, d.contextoId); persistir(); return r; },
+    'custosFixos:alternar': (d) => { const r = alternarCustoFixo(db, d.custoFixoId, d.ativo); persistir(); return r; },
+    'custosFixos:excluir': (d) => { const r = excluirCustoFixo(db, d.custoFixoId, { cascade: d.cascade === true }); persistir(); return r; },
 
     // Cartoes e faturas
     'cartoes:criar': (d) => { const r = criarCartao(db, d); persistir(); return r; },
@@ -129,6 +138,15 @@ export function criarApi(db, persistir = () => {}) {
     'relatorios:balancete': (d) => balancete(db, d),
     'relatorios:comparativo': (d) => comparativo(db, d),
     'relatorios:exportarCSV': (d) => exportaCSV(balancete(db, d)),
+    // v0.10.0: Motor Financeiro (relatorios avancados + alertas)
+    'relatorios:gastosPorMes': (d) => gastosPorMes(db, d.contextoId, d.meses ?? 12),
+    'relatorios:topCategorias': (d) => topCategorias(db, d.contextoId, d.dataInicio, d.dataFim, d.limite ?? 10),
+    'relatorios:topDespesas': (d) => topDespesas(db, d.contextoId, d.dataInicio, d.dataFim, d.limite ?? 10),
+    'relatorios:gastosPorConta': (d) => gastosPorConta(db, d.contextoId, d.dataInicio, d.dataFim),
+    'relatorios:faturasAVencer': (d) => faturasAVencer(db, d.contextoId, d.diasFuturos ?? 30),
+    'relatorios:variacaoMensal': (d) => variacaoMensal(db, d.contextoId),
+    'relatorios:alertas': (d) => alertas(db, d.contextoId),
+    'relatorios:exportarMovimentosCSV': (d) => exportarMovimentosCSV(db, d.contextoId, d.dataInicio, d.dataFim),
 
     // Auto-update via GitHub Releases (Fase Hardening) — secao 5 do PADRAO.
     // ATENCAO: o backup do banco eh feito na rota `update:aplicar` ANTES de

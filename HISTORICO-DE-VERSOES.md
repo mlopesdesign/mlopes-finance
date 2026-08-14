@@ -1,4 +1,4 @@
-## 0.9.1 — Dashboard separado por conta + cartão
+## 0.10.0 — Dashboard separado por conta + cartão
 
 - **Motivação do user**: "visão geral tem que separar as contas e constar o cartão tb". O dashboard antigo era só 4 cards (Receitas/Despesas/Saldo/qtdContas) + 4 cards auxiliares. Não separava por conta nem mostrava cartão de crédito.
 - **`renderDashboard()` reescrito do zero** (`src/js/app.js`). Novo layout:
@@ -14,7 +14,7 @@
 - **Novas rotas servidor** (`servidor.js`): `dashboard:saldoPorConta`, `dashboard:faturaAtual`.
 - **Bug fix em `estornarLancamento`**: antes o estorno criava 1 lançamento de natureza oposta COM status='aberto' (contava no saldo, inflava o saldo). Agora cria o inverso com status='estornado' direto, e o original também vai pra 'estornado'. Os 2 somem do cálculo de saldo, mantendo o número correto. `criarLancamento` agora aceita parâmetro `status` (default 'aberto', 'estornado' usado internamente pelo estornarLancamento).
 - **4 testes novos** (105/105 verde): `saldoPorConta` soma corretamente, transfere entre contas (orig -X, dest +X, total consistente), ignora estornados; `faturaAtualDoCartao` retorna fatura aberta/fechada mais próxima. 1 teste atualizado: `listarLancamentos` espera 2 itens (não 3) após estornar, porque o inverso também fica 'estornado'.
-- **Bump v0.9.0 → v0.9.1** (6 lugares). Bundle 6.05 MB, SHA `3CB73C49…8C9`. Auto-update já programado.
+- **Bump v0.9.0 → v0.10.0** (6 lugares). Bundle 6.05 MB, SHA `3CB73C49…8C9`. Auto-update já programado.
 - **Motivação do user** (gravado pra nunca repetir): dashboards genéricos que mostram "saldo total" sem separar por origem confundem. User quer ver CADA conta e CADA cartão separadamente, com saldo próprio. Sempre que criar dashboard, listar contas/cartões com saldos individuais + barra de progresso de uso de cartão.
 
 ## 0.9.0 — Tela de Cartões e Faturas
@@ -41,10 +41,10 @@
   - `telas/faturas.js` (lista + drill-down + pagar): select de cartao no topo. Pra cada cartao, tabela de faturas com: ciclo, data fechamento, data vencimento, qtd de lancamentos, total, pago, status (paga/fechada/aberta). Botoes: "Ver lançamentos" (abre painel com tabela detalhada dos lancamentos da fatura), "Pagar" (modal com select de conta bancaria + valor + data). Modal de pagamento valida que valor > 0 e <= restante, e mostra preview do total/pago/restante.
 - **Sidebar** (`index.html`): adicionados 2 botoes "Cartões" e "Faturas" entre "Importar extrato" e "Transferências". Navegação via `data-view` igual as outras telas.
 - **App.js**: `render(view)` agora roteia `view === 'cartoes'` e `view === 'faturas'`. Tela de faturas aceita `cartaoFiltro` via `dataset.cartaoFiltro` no botão da nav (permite a tela de cartões navegar direto pras faturas de um cartão especifico).
-- **Mudança no `listarLancamentosDetalhados`**: agora retorna **24 colunas** (eram 22) por causa das 2 colunas novas (`cartao_id` e `fatura_id`). Posicao dos JOINs mudou de 17-21 pra 19-23. UI de `renderLancamentos` ainda nao mostra essas colunas (escopo do v0.9.1 enxuto era so a tela de cartões), mas o backend tá pronto pra v0.9.1 exibir badge "💳 cartao" / "📄 fatura X".
+- **Mudança no `listarLancamentosDetalhados`**: agora retorna **24 colunas** (eram 22) por causa das 2 colunas novas (`cartao_id` e `fatura_id`). Posicao dos JOINs mudou de 17-21 pra 19-23. UI de `renderLancamentos` ainda nao mostra essas colunas (escopo do v0.10.0 enxuto era so a tela de cartões), mas o backend tá pronto pra v0.10.0 exibir badge "💳 cartao" / "📄 fatura X".
 - **10 testes novos** (101/101 verde): criarCartao cria conta associada tipo 'cartao', excluirCartao sem cascade BLOQUEIA + com cascade apaga + desativa conta, criarLancamento auto-vincula à fatura do ciclo (antes/depois do fechamento), criarLancamento em conta bancaria NAO vincula, valor_total_centavos atualiza ao criar/excluir, pagarFatura marca fatura_id e status='paga', listarFaturasDetalhadas com qtd/soma, listarLancamentosDaFatura filtra certo, atualizarCartao muda cadastro, calcularCicloDaCompra trata virada de ano.
-- **Bump v0.8.20 → v0.9.1** (7 lugares). Bundle v0.9.1 (~6 MB) em publicacao no GH. Auto-update ja ta programado.
-- **Motivação do user** (gravado pra nunca repetir): "senti falta do cartão de credito, ele é muito importante pra eu controlar meus gastos e fazer previsões de parcelamento". Escolheu o escopo "enxuto" (sem parcelamento com projeção), entao v0.9.1 pode trazer parcelamento (compra parcelada em Nx → N lancamentos automaticos nas faturas futuras, com projecao visual "R$ 250 x 12 = R$ 3.000, termina em 2027-03"). Ja tem `calcularCicloDaCompra` que vai ser util pra projetar a fatura de cada parcela.
+- **Bump v0.8.20 → v0.10.0** (7 lugares). Bundle v0.10.0 (~6 MB) em publicacao no GH. Auto-update ja ta programado.
+- **Motivação do user** (gravado pra nunca repetir): "senti falta do cartão de credito, ele é muito importante pra eu controlar meus gastos e fazer previsões de parcelamento". Escolheu o escopo "enxuto" (sem parcelamento com projeção), entao v0.10.0 pode trazer parcelamento (compra parcelada em Nx → N lancamentos automaticos nas faturas futuras, com projecao visual "R$ 250 x 12 = R$ 3.000, termina em 2027-03"). Ja tem `calcularCicloDaCompra` que vai ser util pra projetar a fatura de cada parcela.
 
 ## 0.8.20 — Correção de importação órfão (reimport + DELETE manual + reciclar)
 
@@ -117,7 +117,7 @@ Auditoria completa do app cruzando backend (86 rotas), servidor e UI (5 telas + 
 
 **Bump v0.8.15 → v0.8.16** (7 lugares). Bundle v0.8.16 (5.71 MB, SHA `2C79FD9E…B9`) instalado na máquina do Marcio, backup v0.8.15 preservado.
 
-**Pendente pra v0.9.1** (precisa telas novas): Recorrências, Cartões, Faturas, lancamento_tags.
+**Pendente pra v0.10.0** (precisa telas novas): Recorrências, Cartões, Faturas, lancamento_tags.
 
 ## 0.8.15 — CRUD completo de exclusão + Resetar banco
 
@@ -264,7 +264,7 @@ Esta versao bate o source em v0.8.9 (era v0.8.8 com hotfixes aplicados direto no
 - **5 testes novos** (era 29, agora **34/34 verde**): seed automatico de categoria, listar com filtro inativos, atualizar nome/descricao, alternar ativo, resumo agregado.
 - **Bump 0.7.1 â†’ 0.8.0** em 5 lugares: `neutralino.config.json`, `package.json`, `src/js/app.js`, `src/js/backend/ambiente.js` (logs/inst), `installer/MLopesFinance.iss`. Encoding UTF-8 sem BOM mantido.
 - **Smoke test**: silent install OK, ProductVersion `0.8.0` confirmada no `.exe`, app abre, topbar mostra "Contexto: â–¼" + "VERSÃƒO 0.8.0", item "Contextos" no sidebar entre "Categorias" e "ConfiguraÃ§Ãµes".
-- **Proxima versao (v0.9.1 â€” backlog)**:
+- **Proxima versao (v0.10.0 â€” backlog)**:
   - **Refatorar "Conta" como pessoa** (PF/PJ): `contas.pessoa TEXT DEFAULT 'mista'` + UI de cadastro.
   - **Parcelamentos com projecao**: entidade `parcelamentos` (v5) + endpoint `parcelamentos:projecaoFutura(contextoId, meses)`.
   - **Regime de caixa** (relatorio opcional de fluxo de caixa por data de pagamento da tabela `baixas`).
@@ -290,8 +290,8 @@ Esta versao bate o source em v0.8.9 (era v0.8.8 com hotfixes aplicados direto no
 - **Tira o path do banco do header**: o `VersÃ£o 0.8.0 Â· C:\Users\mlope\AppData\Roaming\MLopesFinance\dados\mlopes-finance.sqlite` que aparecia no status (logo abaixo do topbar) foi removido. Era informacao de debug que poluia a visao geral. Agora o status so mostra `VersÃ£o 0.8.1`.
 - **Path do banco movido pra Configuracoes > Avancado**: novo campo "Banco de dados" com o path completo, visivel so quando o user precisa (ex: pra debug, suporte, ou pra localizar o arquivo pra backup manual).
 - **Bump 0.8.0 â†’ 0.8.1** em 7 lugares (neutralino.config.json, package.json, src/js/app.js, src/js/backend/ambiente.js, resources/js/app.js, resources/js/backend/ambiente.js, installer/MLopesFinance.iss). Encoding UTF-8 sem BOM mantido, 34/34 testes verde.
-- **Por que 0.8.1 e nao 0.9.1**: a v0.8.0 ja saiu sem nunca ter sido validada visualmente (auto-update so funciona com uma versao acima da atual publicada no GitHub Releases). A v0.8.1 serve exatamente como "release gatilho" pra mostrar a notificaÃ§Ã£o da pill amarela + banner no app que ainda esta na v0.8.0. Quando o user abrir o MLopes Finance agora (v0.8.0), vai ver a notificaÃ§Ã£o de v0.8.1 e atualizar em 1 clique. Auto-update validado de v0.8.0 â†’ v0.8.1.
-- **Apos esta release**: a v0.8.1 se torna a base, e qualquer mudanca real de feature ja pula pra v0.9.1 (Conta como pessoa, Parcelamentos, Regime de caixa, Checkbox "Iniciar ao finalizar", etc â€” backlog do plano).
+- **Por que 0.8.1 e nao 0.10.0**: a v0.8.0 ja saiu sem nunca ter sido validada visualmente (auto-update so funciona com uma versao acima da atual publicada no GitHub Releases). A v0.8.1 serve exatamente como "release gatilho" pra mostrar a notificaÃ§Ã£o da pill amarela + banner no app que ainda esta na v0.8.0. Quando o user abrir o MLopes Finance agora (v0.8.0), vai ver a notificaÃ§Ã£o de v0.8.1 e atualizar em 1 clique. Auto-update validado de v0.8.0 â†’ v0.8.1.
+- **Apos esta release**: a v0.8.1 se torna a base, e qualquer mudanca real de feature ja pula pra v0.10.0 (Conta como pessoa, Parcelamentos, Regime de caixa, Checkbox "Iniciar ao finalizar", etc â€” backlog do plano).
 
 ## 0.7.1 â€” Auto-update via GitHub Releases (Fase Hardening)
 

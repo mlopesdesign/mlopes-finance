@@ -9,9 +9,10 @@ import { renderRelatorios } from './telas/relatorios.js';
 import { renderContextos } from './telas/contextos.js';
 import { renderCartoes } from './telas/cartoes.js';
 import { renderFaturas } from './telas/faturas.js';
+import { renderCustosFixos } from './telas/custosFixos.js';
 import * as updUI from './update.js';
 
-const APP_VERSION = '0.9.1';
+const APP_VERSION = '0.10.0';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = []; let appDbPath = '';
 const $ = (s) => document.querySelector(s); const app = $('#app');
@@ -210,6 +211,7 @@ function render(view) {
     if (faturasBtn) delete faturasBtn.dataset.cartaoFiltro;
     return renderFaturas(contextoId, api, filtro);
   }
+  if (view === 'custosfixos') return renderCustosFixos(contextoId, api);
   if (view === 'contextos') return renderContextos(contextoId, api, (novoId) => trocarContextoAtivo(novoId, api));
   if (view === 'configuracoes') return renderConfiguracoes(contextoId, api, appDbPath);
   return renderDashboard();
@@ -252,10 +254,12 @@ function renderDashboard() {
   const totProjetos = api('projetos:listar', { contextoId }).length;
   const totCC = api('centros_custo:listar', { contextoId }).length;
   const totTags = api('tags:listar', { contextoId }).length;
-  // v0.9.1: saldos por conta + faturas dos cartoes
+  // v0.10.0: saldos por conta + faturas dos cartoes
   const saldosContas = api('dashboard:saldoPorConta', { contextoId });
   const cartoes = api('cartoes:listar', { contextoId });
   const faturasCartoes = cartoes.map(c => ({ cartao: c, faturaAtual: api('dashboard:faturaAtual', { cartaoId: c[0] }) }));
+  // v0.10.0: resumo de custos fixos do mes
+  const custosFixosResumo = api('custosFixos:resumoMes', { contextoId });
   // Separa contas por tipo (cartao nao mostra saldo — confunde)
   const contasBancarias = saldosContas.filter(c => c.tipo === 'bancaria' || c.tipo === 'investimento');
   const contasCartao = saldosContas.filter(c => c.tipo === 'cartao');
@@ -299,6 +303,52 @@ function renderDashboard() {
         </table>
       </div>
       `}
+    </div>
+
+    <div class="panel">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h2>📌 Custos fixos do mês (${custosFixosResumo.mes})</h2>
+        <button class="button ghost small" data-nav="custosfixos">Gerenciar custos fixos</button>
+      </div>
+      <div class="cards">
+        <div class="card">
+          <span class="card-label">Total previsto</span>
+          <span class="card-value">${money(custosFixosResumo.totalPrevistoCentavos)}</span>
+          <span class="card-sub">${custosFixosResumo.custosFixos.filter(c => c.ativo).length} custo(s) ativo(s) / mês</span>
+        </div>
+        <div class="card">
+          <span class="card-label">Já gerado</span>
+          <span class="card-value" style="color: var(--positive);">${money(custosFixosResumo.totalPagoCentavos)}</span>
+          <span class="card-sub">${custosFixosResumo.percentualPago.toFixed(0)}% do previsto</span>
+        </div>
+        <div class="card">
+          <span class="card-label">A pagar</span>
+          <span class="card-value" style="color: var(--negative);">${money(Math.max(0, custosFixosResumo.totalPrevistoCentavos - custosFixosResumo.totalPagoCentavos))}</span>
+          <span class="card-sub">${100 - custosFixosResumo.percentualPago.toFixed(0)}% restante</span>
+        </div>
+      </div>
+      ${custosFixosResumo.custosFixos.length > 0 ? `
+      <table style="margin-top:12px;">
+        <thead>
+          <tr><th>Custo</th><th>Dia</th><th>Pago por</th><th style="text-align:right;">Valor</th><th>${custosFixosResumo.mes}</th></tr>
+        </thead>
+        <tbody>
+          ${custosFixosResumo.custosFixos.slice(0, 5).map(c => {
+            const statusMes = c.gerado
+              ? '<span class="pill" style="color:var(--positive);">✓ Gerado</span>'
+              : '<span class="pill warn">Pendente</span>';
+            return `<tr>
+              <td><strong>${escapeHtml(c.descricao)}</strong></td>
+              <td>dia ${c.diaDoMes}</td>
+              <td>${escapeHtml(c.contaNome)}</td>
+              <td style="text-align:right;">${money(c.valorCentavos)}</td>
+              <td>${statusMes}</td>
+            </tr>`;
+          }).join('')}
+          ${custosFixosResumo.custosFixos.length > 5 ? `<tr><td colspan="5" style="text-align:center; color: var(--muted);">+ ${custosFixosResumo.custosFixos.length - 5} mais (clique em "Gerenciar custos fixos" pra ver todos)</td></tr>` : ''}
+        </tbody>
+      </table>
+      ` : ''}
     </div>
 
     <div class="panel">
