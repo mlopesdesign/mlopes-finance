@@ -2,7 +2,7 @@ import { criarCategoria, criarConta, criarContexto, listarContextos, obterContex
 import { conciliarLancamento, criarLancamento, resumo, excluirLancamento, excluirTodosLancamentos, estornarLancamento, editarLancamento, listarLancamentos, listarLancamentosDetalhados, obterLancamento } from './core/lancamentos.js';
 import { getAllConfig, getConfig, setConfig, deleteConfig, resetConfig } from './core/configuracoes.js';
 import { criarBackup, radiografar, restaurarBackup, validarCiclo, resetarBanco } from './core/backup.js';
-import { criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento, excluirCliente, excluirFornecedor, excluirProjeto, excluirCentroCusto, excluirTag, desvincularTagLancamento } from './core/cadastros.js';
+import { criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, atualizarCentroCusto, criarTag, listarTags, atualizarTag, vincularTagLancamento, listarTagsDoLancamento, excluirCliente, excluirFornecedor, excluirProjeto, excluirCentroCusto, excluirTag, desvincularTagLancamento } from './core/cadastros.js';
 import { criarTransferencia, listarTransferencias, excluirTransferencia } from './core/transferencias.js';
 import { registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa } from './core/baixas.js';
 import { criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias, excluirRecorrencia, desativarRecorrencia } from './core/recorrencias.js';
@@ -62,12 +62,15 @@ export function criarApi(db, persistir = () => {}) {
     'fornecedores:excluir': (d) => { const r = excluirFornecedor(db, d.id); persistir(); return r; },
     'projetos:listar': (d) => listarProjetos(db, d.contextoId),
     'projetos:criar': (d) => { const id = criarProjeto(db, d); persistir(); return id; },
+    'projetos:atualizar': (d) => { atualizarProjeto(db, d.id, d); persistir(); return true; },
     'projetos:excluir': (d) => { const r = excluirProjeto(db, d.id, { cascade: d.cascade === true }); persistir(); return r; },
     'centros_custo:listar': (d) => listarCentrosCusto(db, d.contextoId),
     'centros_custo:criar': (d) => { const id = criarCentroCusto(db, d); persistir(); return id; },
+    'centros_custo:atualizar': (d) => { atualizarCentroCusto(db, d.id, d); persistir(); return true; },
     'centros_custo:excluir': (d) => { const r = excluirCentroCusto(db, d.id, { cascade: d.cascade === true }); persistir(); return r; },
     'tags:listar': (d) => listarTags(db, d.contextoId),
     'tags:criar': (d) => { const id = criarTag(db, d); persistir(); return id; },
+    'tags:atualizar': (d) => { atualizarTag(db, d.id, d); persistir(); return true; },
     'tags:excluir': (d) => { const r = excluirTag(db, d.id); persistir(); return r; },
     'lancamento_tags:vincular': (d) => { const ok = vincularTagLancamento(db, d.lancamentoId, d.tagId); persistir(); return ok; },
     'lancamento_tags:desvincular': (d) => { const ok = desvincularTagLancamento(db, d.lancamentoId, d.tagId); persistir(); return ok; },

@@ -218,6 +218,38 @@ export function excluirTag(db, id) {
   return { ok: true, id };
 }
 
+/**
+ * Atualiza um centro de custo. Aceita qualquer subset de campos.
+ * Retorna true se atualizou, false se nada mudou.
+ */
+export function atualizarCentroCusto(db, id, campos) {
+  if (!Number.isInteger(id)) throw new Error('id obrigatorio.');
+  const permitidos = ['nome', 'descricao', 'ativo'];
+  const sets = []; const vals = [];
+  for (const k of permitidos) if (k in campos) { sets.push(`${k} = ?`); vals.push(campos[k] == null ? null : String(campos[k])); }
+  if (!sets.length) return false;
+  sets.push('atualizado_em = CURRENT_TIMESTAMP');
+  vals.push(id);
+  db.run(`UPDATE centros_custo SET ${sets.join(', ')} WHERE id = ?`, vals);
+  return true;
+}
+
+/**
+ * Atualiza uma tag. Aceita qualquer subset de campos.
+ * Retorna true se atualizou, false se nada mudou.
+ */
+export function atualizarTag(db, id, campos) {
+  if (!Number.isInteger(id)) throw new Error('id obrigatorio.');
+  const permitidos = ['nome', 'cor', 'ativo'];
+  const sets = []; const vals = [];
+  for (const k of permitidos) if (k in campos) { sets.push(`${k} = ?`); vals.push(campos[k] == null ? null : String(campos[k])); }
+  if (!sets.length) return false;
+  sets.push('atualizado_em = CURRENT_TIMESTAMP');
+  vals.push(id);
+  db.run(`UPDATE tags SET ${sets.join(', ')} WHERE id = ?`, vals);
+  return true;
+}
+
 export function desvincularTagLancamento(db, lancamentoId, tagId) {
   if (!Number.isInteger(lancamentoId) || !Number.isInteger(tagId)) throw new Error('ids obrigatorios.');
   db.run('DELETE FROM lancamento_tags WHERE lancamento_id = ? AND tag_id = ?', [lancamentoId, tagId]);

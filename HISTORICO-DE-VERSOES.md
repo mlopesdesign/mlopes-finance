@@ -1,3 +1,16 @@
+## 0.11.4 — HOTFIX: labels de data PT-BR + rotas de atualização de cadastros
+
+- **Sintoma 1**: tela "Editar projeto" mostrava label "Data inicio (YYYY-MM-DD)" e "Data fim (YYYY-MM-DD)" — esqueci de localizar pra PT-BR quando fiz a v0.10.1.
+- **Sintoma 2**: ao clicar "Salvar" em qualquer cadastro (Projeto, Centro de custo, Tag), aparecia toast "Erro: Canal nao autorizado: undefined". O `telas/cadastros-generico.js` mapeia `apiAtualizar` pra cada tipo, mas os 3 tipos (projetos, centros_custo, tags) não tinham `apiAtualizar` no MAPA.
+- **Causa**: na v0.10.1 eu localizei as datas em todos os lugares visíveis (tabelas, listas, dashboard), mas esqueci do `cadastros-generico.js`. E ao criar o MAPA, defini só `apiListar`/`apiCriar`/`apiExcluir` (sem `apiAtualizar`).
+- **Correção**:
+  - Labels de data mudadas de `(YYYY-MM-DD)` pra `(dd/mm/aaaa)` no `telas/cadastros-generico.js`.
+  - Adicionada rota `projetos:atualizar` no servidor (função `atualizarProjeto` já existia em `core/cadastros.js`).
+  - Criadas funções `atualizarCentroCusto` e `atualizarTag` em `core/cadastros.js` + rotas correspondentes no servidor.
+  - Adicionado `apiAtualizar` no MAPA de `projetos`, `centros_custo` e `tags` no `telas/cadastros-generico.js`.
+- **Bump v0.11.3 → v0.11.4** (5 lugares via `Edit`).
+- **Lição aprendida (gravada pra nunca mais)**: smoke test RUNTIME (importar cada módulo) + grep por `apiAtualizar` em todos os tipos do MAPA antes de qualquer publish. Criei `tools/check-cadastro-mapa.mjs` que valida que todo tipo de cadastro tem TODOS os campos de API (listar/criar/atualizar/excluir).
+
 ## 0.11.3 — Detecção por fatura paga + calendário separado Finalizados/Vigentes
 
 - **Motivação do user**: "ele importou mas não detectou o que já foi pago e finalizado, os finalizados deveriam ficar separados dos vigentes, simples de ver pelas datas" + "isso esta ilegivel". A v0.11.1 detectava parcelas a partir do extrato mas só marcava como pagas se o LANÇAMENTO tivesse status `conciliado`/`estornado`. No caso real do Marcio, os lançamentos do cartão foram importados com status `aberto` (default), mas as FATURAS dos meses passados já tinham sido pagas (status `paga`). Resultado: 0 parcelas marcadas como pagas mesmo com 7 meses de extrato já pago.

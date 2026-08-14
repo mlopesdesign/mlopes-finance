@@ -14,17 +14,17 @@ const MAPA = {
     { nome: 'documento', label: 'Documento (CPF/CNPJ)', tipo: 'texto' },
     { nome: 'observacoes', label: 'Observacoes', tipo: 'texto' },
   ]},
-  projetos: { titulo: 'Projetos', apiListar: 'projetos:listar', apiCriar: 'projetos:criar', apiExcluir: 'projetos:excluir', campos: [
+  projetos: { titulo: 'Projetos', apiListar: 'projetos:listar', apiCriar: 'projetos:criar', apiAtualizar: 'projetos:atualizar', apiExcluir: 'projetos:excluir', campos: [
     { nome: 'nome', label: 'Nome', tipo: 'texto', required: true },
     { nome: 'descricao', label: 'Descricao', tipo: 'texto' },
-    { nome: 'dataInicio', label: 'Data inicio (YYYY-MM-DD)', tipo: 'texto' },
-    { nome: 'dataFim', label: 'Data fim (YYYY-MM-DD)', tipo: 'texto' },
+    { nome: 'dataInicio', label: 'Data início (dd/mm/aaaa)', tipo: 'texto' },
+    { nome: 'dataFim', label: 'Data fim (dd/mm/aaaa)', tipo: 'texto' },
   ]},
-  centros_custo: { titulo: 'Centros de custo', apiListar: 'centros_custo:listar', apiCriar: 'centros_custo:criar', apiExcluir: 'centros_custo:excluir', campos: [
+  centros_custo: { titulo: 'Centros de custo', apiListar: 'centros_custo:listar', apiCriar: 'centros_custo:criar', apiAtualizar: 'centros_custo:atualizar', apiExcluir: 'centros_custo:excluir', campos: [
     { nome: 'nome', label: 'Nome', tipo: 'texto', required: true },
     { nome: 'descricao', label: 'Descricao', tipo: 'texto' },
   ]},
-  tags: { titulo: 'Tags', apiListar: 'tags:listar', apiCriar: 'tags:criar', apiExcluir: 'tags:excluir', campos: [
+  tags: { titulo: 'Tags', apiListar: 'tags:listar', apiCriar: 'tags:criar', apiAtualizar: 'tags:atualizar', apiExcluir: 'tags:excluir', campos: [
     { nome: 'nome', label: 'Nome', tipo: 'texto', required: true },
     { nome: 'cor', label: 'Cor', tipo: 'cor' },
   ]},

@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.11.3';
+export const APP_VERSION = '0.11.4';
 
 export async function abrirBancoLocal(SQL, schema) {
   if (!globalThis.Neutralino) throw new Error('O aplicativo precisa ser executado pelo MLopes Finance instalado.');

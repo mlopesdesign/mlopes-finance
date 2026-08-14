@@ -13,7 +13,7 @@ import { renderCustosFixos } from './telas/custosFixos.js';
 import { renderParcelamentos } from './telas/parcelamentos.js';
 import * as updUI from './update.js';
 
-const APP_VERSION = '0.11.3';
+const APP_VERSION = '0.11.4';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = []; let appDbPath = '';
 const $ = (s) => document.querySelector(s); const app = $('#app');
