@@ -1,4 +1,11 @@
 
+## 0.8.18 — Fix dedup de duplicatas internas na importação de extrato
+
+- **Bug reportado pelo Marcio**: importação de extrato do Santander (CSV) dava erro `UNIQUE constraint failed: itens_importacao.importacao_id, itens_importacao.chave_externa` na prévia. Causa: o extrato do banco tinha 2 linhas idênticas (mesma data+valor+descrição = mesma `chave_externa`), e o `INSERT` direto batia no `UNIQUE(importacao_id, chave_externa)`.
+- **Fix em `core/importacao.js::criarPreviaImportacao`**: 1) **Dedup ANTES do INSERT**: agrupa por `chave_externa` via `Set`, só insere o primeiro. 2) **`INSERT OR IGNORE`** por segurança: se dois processos importarem o mesmo arquivo ao mesmo tempo, o segundo é ignorado em vez de explodir. 3) **`total_registros` preserva o original** (3 linhas no CSV → `total=3`, mas 1 item único em `itens_importacao`).
+- **2 testes novos** (78/78 verde): 2 linhas idênticas + 1 diferente → 2 itens únicos. 3 linhas idênticas → 1 (sem UNIQUE constraint failed).
+- **Bump v0.8.17 → v0.8.18** (7 lugares). Bundle v0.8.18 (5.72 MB, SHA `C67D44CE…96`, EXE FileVersion `0.8.18.0`) instalado na máquina do Marcio, backup v0.8.17 preservado.
+
 ## 0.8.17 — Botão "Excluir todos" em todas as telas de lista
 
 - **Motivação do user**: "pq não tem a opção de deletar tudo?". O botão de resetar banco em Configurações > Avançado (3 confirmações + digitar "RESET") tem fricção demais pra quem só quer limpar uma tela. Adicionei botão "🗑 Excluir todos (N)" direto no header de cada tela de lista.
