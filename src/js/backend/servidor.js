@@ -7,6 +7,7 @@ import { criarTransferencia, listarTransferencias, excluirTransferencia } from '
 import { registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa } from './core/baixas.js';
 import { criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias, excluirRecorrencia, desativarRecorrencia } from './core/recorrencias.js';
 import { criarCustoFixo, listarCustosFixos, totalCustosFixosMes, resumoCustosFixosMes, gerarOcorrenciasMesAtual, alternarCustoFixo, excluirCustoFixo } from './core/custosFixos.js';
+import { criarParcelamento, listarParcelamentos, listarParcelas, pagarParcela, excluirParcelamento, projecaoParcelasPorMes, resumoCompletoPorMes, calendarioCompletoParcelas, obterParcelamentoCompleto } from './core/parcelamentos.js';
 import { criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura, atualizarCartao, excluirCartao, listarFaturasDetalhadas, listarLancamentosDaFatura, calcularCicloDaCompra, faturaAtualDoCartao } from './core/cartoes.js';
 import { criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao } from './core/importacao.js';
 import { balancete, comparativo, exportaCSV, gastosPorMes, topCategorias, topDespesas, gastosPorConta, faturasAVencer, variacaoMensal, alertas, exportarMovimentosCSV } from './core/relatorios.js';
@@ -147,6 +148,17 @@ export function criarApi(db, persistir = () => {}) {
     'relatorios:variacaoMensal': (d) => variacaoMensal(db, d.contextoId),
     'relatorios:alertas': (d) => alertas(db, d.contextoId),
     'relatorios:exportarMovimentosCSV': (d) => exportarMovimentosCSV(db, d.contextoId, d.dataInicio, d.dataFim),
+
+    // v0.11.0: Parcelamentos (compra em Nx com projecao mensal + calendario completo)
+    'parcelamentos:criar': (d) => { const r = criarParcelamento(db, d); persistir(); return r; },
+    'parcelamentos:listar': (d) => listarParcelamentos(db, d.contextoId, { incluirInativos: d.incluirInativos === true }),
+    'parcelamentos:listarParcelas': (d) => listarParcelas(db, d.parcelamentoId),
+    'parcelamentos:pagarParcela': (d) => { const r = pagarParcela(db, d.parcelaId, d.dataPagamento); persistir(); return r; },
+    'parcelamentos:excluir': (d) => { const r = excluirParcelamento(db, d.parcelamentoId, { cascade: d.cascade === true }); persistir(); return r; },
+    'parcelamentos:projecao': (d) => projecaoParcelasPorMes(db, d.contextoId, d.mesesFuturos ?? 12),
+    'parcelamentos:resumoCompleto': (d) => resumoCompletoPorMes(db, d.contextoId, d.mesesFuturos ?? 12),
+    'parcelamentos:calendarioCompleto': (d) => calendarioCompletoParcelas(db, d.contextoId, d.mesesMinimos ?? 6),
+    'parcelamentos:obterCompleto': (d) => obterParcelamentoCompleto(db, d.parcelamentoId),
 
     // Auto-update via GitHub Releases (Fase Hardening) — secao 5 do PADRAO.
     // ATENCAO: o backup do banco eh feito na rota `update:aplicar` ANTES de

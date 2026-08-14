@@ -16,6 +16,7 @@ import { registrarBaixa, saldoEmAberto, listarBaixas } from '../src/js/backend/c
 import { criarRecorrencia, gerarProximaOcorrencia } from '../src/js/backend/core/recorrencias.js';
 import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas, atualizarCartao, excluirCartao, calcularCicloDaCompra, listarFaturasDetalhadas, listarLancamentosDaFatura, faturaAtualDoCartao } from '../src/js/backend/core/cartoes.js';
 import { criarCustoFixo, listarCustosFixos, totalCustosFixosMes, resumoCustosFixosMes, gerarOcorrenciasMesAtual, alternarCustoFixo, excluirCustoFixo } from '../src/js/backend/core/custosFixos.js';
+import { criarParcelamento, listarParcelamentos, listarParcelas, pagarParcela, excluirParcelamento, projecaoParcelasPorMes, resumoCompletoPorMes, calendarioCompletoParcelas, obterParcelamentoCompleto } from '../src/js/backend/core/parcelamentos.js';
 import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, inferirNaturezaItem, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao } from '../src/js/backend/core/importacao.js';
 import { balancete, comparativo, exportaCSV, calcularPeriodo, gastosPorMes, topCategorias, topDespesas, gastosPorConta, faturasAVencer, variacaoMensal, alertas, exportarMovimentosCSV } from '../src/js/backend/core/relatorios.js';
 import { aplicarAtualizacao, pathCacheWebView2Async, invalidarCacheWebView2 } from '../src/js/backend/update.js';
@@ -260,9 +261,9 @@ test('migração v2 → head: aplica todas as migrações em banco v0.4.1 simula
            INSERT INTO configuracoes VALUES ('tema', 'dark', 'texto', CURRENT_TIMESTAMP);`);
   // Tabelas v3 NÃO devem existir ainda
   assert.throws(() => db.exec('SELECT * FROM clientes'));
-  // Roda migração cumulativa (v2 → v3 → v4 → v5 → v6)
+  // Roda migração cumulativa (v2 → v3 → v4 → v5 → v6 → v7)
   const v = migrar(db);
-  assert.equal(v, 6, 'migracao cumulativa foi ate v6 (v0.9.0)');
+  assert.equal(v, 7, 'migracao cumulativa foi ate v7 (v0.11.0)');
   // Agora tabelas v3 existem
   assert.equal(db.exec('SELECT COUNT(*) FROM clientes').length, 1);
   assert.equal(db.exec('SELECT COUNT(*) FROM transferencias').length, 1);
@@ -279,8 +280,8 @@ test('migração v2 → head: aplica todas as migrações em banco v0.4.1 simula
   const colsLanc = db.exec("PRAGMA table_info(lancamentos)")[0].values.map(r => r[1]);
   assert.ok(colsLanc.includes('cartao_id'), 'lancamento.cartao_id existe (v0.9.0)');
   assert.ok(colsLanc.includes('fatura_id'), 'lancamento.fatura_id existe (v0.9.0)');
-  // schema_version foi pra 6
-  assert.equal(db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0].values[0][0], '6');
+  // schema_version foi pra 7
+  assert.equal(db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0].values[0][0], '7');
   // Dados anteriores preservados (configuracoes tema)
   assert.equal(db.exec("SELECT valor FROM configuracoes WHERE chave = 'tema'")[0].values[0][0], 'dark');
 });
@@ -2062,4 +2063,225 @@ test('relatorios: exportarMovimentosCSV gera CSV com header e linhas', async () 
   // A descricao "A;B,C" tem virgula e ;, vai ser escapada
   assert.ok(csv.includes('"A;B,C"') || csv.includes('A;B,C'), 'descricao presente');
   assert.ok(csv.includes('100,00'), 'valor em formato BR');
+});
+
+// ============================================================================
+// v0.11.0 + v0.11.1: PARCELAMENTOS (compra em Nx)
+// ============================================================================
+
+// Helper: cria cartao e retorna cartaoId (cria a conta bancaria necessaria)
+function setupCartaoParaParcelamento(db, contextoId) {
+  const cb = criarConta(db, { contextoId, nome: 'BB Conta', tipo: 'bancaria' });
+  const r = criarCartao(db, { contextoId, nome: 'Nubank', limiteCentavos: 1000000, diaFechamento: 5, diaVencimento: 15, contaPagamentoId: cb });
+  return r.cartaoId;
+}
+
+test('parcelamentos: criarParcelamento gera N parcelas com ajuste de 1 centavo na primeira', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartaoId = setupCartaoParaParcelamento(db, cid);
+  // Valor 100.01 / 3 parcelas = 33.37 + 33.33 + 33.31 = 100.01 (resto na primeira)
+  const r = criarParcelamento(db, {
+    contextoId: cid,
+    descricao: 'iPhone 15',
+    valorTotalCentavos: 10001, // R$ 100,01
+    numParcelas: 3,
+    cartaoId,
+    dataPrimeiraParcela: '2026-08-10',
+  });
+  assert.equal(r.id, 1);
+  assert.equal(r.totalParcelas, 3);
+  assert.equal(r.totalCentavos, 10001);
+  // Verifica que as 3 parcelas existem
+  const parcelas = listarParcelas(db, 1);
+  assert.equal(parcelas.length, 3);
+  // Primeira parcela tem o resto (10001 - 3333*3 = 2, entao 3333 + 2 = 3335)
+  assert.equal(parcelas[0][3], 3335, 'primeira parcela 33.35 (3335 centavos, recebe o resto de 2)');
+  assert.equal(parcelas[1][3], 3333);
+  assert.equal(parcelas[2][3], 3333);
+  // Soma = 100.01
+  const soma = parcelas.reduce((s, p) => s + p[3], 0);
+  assert.equal(soma, 10001, 'soma das parcelas == valor total');
+});
+
+test('parcelamentos: criarParcelamento vincula cada parcela a uma fatura do cartao', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartaoId = setupCartaoParaParcelamento(db, cid);
+  criarParcelamento(db, {
+    contextoId: cid, descricao: 'TV', valorTotalCentavos: 240000, numParcelas: 3, cartaoId, dataPrimeiraParcela: '2026-08-10',
+  });
+  const parcelas = listarParcelas(db, 1);
+  // Cada parcela deve ter lancamento_id + fatura_id preenchidos
+  for (const [, , , , , lancId, fatId] of parcelas) {
+    assert.ok(lancId != null, 'lancamento_id vinculado');
+    assert.ok(fatId != null, 'fatura_id vinculado');
+  }
+  // Deve ter criado 3 faturas (ciclos diferentes)
+  const faturas = db.exec('SELECT DISTINCT ciclo FROM faturas WHERE cartao_id = ?', [cartaoId])[0].values;
+  assert.ok(faturas.length >= 1, 'criou pelo menos 1 fatura');
+});
+
+test('parcelamentos: listarParcelamentos inclui ativos, pausados e quitados', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartaoId = setupCartaoParaParcelamento(db, cid);
+  // 1: parcelamento normal
+  criarParcelamento(db, { contextoId: cid, descricao: 'A', valorTotalCentavos: 12000, numParcelas: 3, cartaoId, dataPrimeiraParcela: '2026-08-10' });
+  // 2: parcelamento a quitar (cria 2x e paga tudo)
+  const r2 = criarParcelamento(db, { contextoId: cid, descricao: 'B', valorTotalCentavos: 6000, numParcelas: 2, cartaoId, dataPrimeiraParcela: '2026-08-10' });
+  const ps2 = listarParcelas(db, r2.id);
+  for (const p of ps2) pagarParcela(db, p[0]);
+  // Lista sem inativos
+  const ativos = listarParcelamentos(db, cid);
+  assert.equal(ativos.length, 2);
+  // Lista com inativos (vai ser igual pq nao tem pausado)
+  const todos = listarParcelamentos(db, cid, { incluirInativos: true });
+  assert.equal(todos.length, 2);
+  // Verifica que B ta quitado
+  const b = todos.find(x => x.descricao === 'B');
+  assert.equal(b.parcelasPagas, 2);
+  assert.equal(b.parcelasPendentes, 0);
+});
+
+test('parcelamentos: pagarParcela marca como paga e atualiza resumo', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartaoId = setupCartaoParaParcelamento(db, cid);
+  criarParcelamento(db, { contextoId: cid, descricao: 'X', valorTotalCentavos: 12000, numParcelas: 3, cartaoId, dataPrimeiraParcela: '2026-08-10' });
+  // Paga a primeira
+  const ps = listarParcelas(db, 1);
+  pagarParcela(db, ps[0][0]);
+  // Re-busca
+  const psDepois = listarParcelas(db, 1);
+  assert.equal(psDepois[0][4], 'paga');
+  assert.ok(psDepois[0][7] != null, 'pagaEm preenchida');
+  // Resumo do parcelamento
+  const lista = listarParcelamentos(db, cid);
+  assert.equal(lista[0].parcelasPagas, 1);
+  assert.equal(lista[0].parcelasPendentes, 2);
+});
+
+test('parcelamentos: excluirParcelamento BLOQUEIA com parcelas pagas', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartaoId = setupCartaoParaParcelamento(db, cid);
+  criarParcelamento(db, { contextoId: cid, descricao: 'X', valorTotalCentavos: 12000, numParcelas: 3, cartaoId, dataPrimeiraParcela: '2026-08-10' });
+  const ps = listarParcelas(db, 1);
+  pagarParcela(db, ps[0][0]);
+  // Sem cascade: bloqueia
+  const r = excluirParcelamento(db, 1);
+  assert.equal(r.ok, false);
+  assert.equal(r.bloqueadoPor, 'parcelasPagas');
+  // Com cascade: apaga
+  const r2 = excluirParcelamento(db, 1, { cascade: true });
+  assert.equal(r2.ok, true);
+  assert.equal(r2.cascade, true);
+  // Verifica que o parcelamento sumiu
+  const lista = listarParcelamentos(db, cid, { incluirInativos: true });
+  assert.equal(lista.length, 0);
+});
+
+test('parcelamentos: projecaoParcelasPorMes retorna N meses com totais', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartaoId = setupCartaoParaParcelamento(db, cid);
+  criarParcelamento(db, { contextoId: cid, descricao: 'A', valorTotalCentavos: 12000, numParcelas: 3, cartaoId, dataPrimeiraParcela: '2026-08-10' });
+  const proj = projecaoParcelasPorMes(db, cid, 6);
+  assert.equal(proj.length, 6);
+  // A primeira parcela vence 10/08, entao o mes 2026-08 deve ter 1 parcela de 4000 (12000/3 = 4000)
+  const mes0 = proj[0];
+  assert.equal(mes0.parcelas.length, 1);
+  assert.equal(mes0.parcelas[0].valorCentavos, 4000);
+  assert.equal(mes0.totalCentavos, 4000);
+});
+
+test('parcelamentos: calendarioCompletoParcelas usa range DINAMICO ate a ultima parcela', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartaoId = setupCartaoParaParcelamento(db, cid);
+  // Cria parcelamento longo: 18x (vai de 2026-08 ate 2028-01)
+  criarParcelamento(db, { contextoId: cid, descricao: 'Long', valorTotalCentavos: 1800000, numParcelas: 18, cartaoId, dataPrimeiraParcela: '2026-08-10' });
+  const cal = calendarioCompletoParcelas(db, cid, 6);
+  // Deve ter mais que 6 meses (range dinamico)
+  assert.ok(cal.length > 6, 'range dinamico esticou alem do minimo (>= 18 meses)');
+  // Ultimo mes deve ser 2028-01 (18 meses depois de 2026-08)
+  assert.equal(cal[cal.length - 1].mes, '2028-01');
+  // Cada mes tem qtdParcelas >= 0
+  for (const m of cal) assert.ok(m.qtdParcelas >= 0);
+  // Total do mes 1 deve ser 100000 (18x de 100.000)
+  assert.equal(cal[0].totalCentavos, 100000);
+});
+
+test('parcelamentos: calendarioCompletoParcelas sem parcelas retorna minimo de meses', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cal = calendarioCompletoParcelas(db, cid, 6);
+  assert.equal(cal.length, 6, 'cai pro minimo de 6 meses quando nao ha parcelas');
+  for (const m of cal) {
+    assert.equal(m.qtdParcelas, 0);
+    assert.equal(m.totalCentavos, 0);
+  }
+});
+
+test('parcelamentos: obterParcelamentoCompleto retorna info + resumo estatistico', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartaoId = setupCartaoParaParcelamento(db, cid);
+  criarParcelamento(db, { contextoId: cid, descricao: 'Notebook', valorTotalCentavos: 600000, numParcelas: 6, cartaoId, dataPrimeiraParcela: '2026-08-10' });
+  // Paga 2 das 6
+  const ps = listarParcelas(db, 1);
+  pagarParcela(db, ps[0][0]);
+  pagarParcela(db, ps[1][0]);
+  // Busca o completo
+  const det = obterParcelamentoCompleto(db, 1);
+  assert.ok(det != null);
+  assert.equal(det.descricao, 'Notebook');
+  assert.equal(det.valorTotalCentavos, 600000);
+  assert.equal(det.numParcelas, 6);
+  assert.equal(det.parcelas.length, 6);
+  assert.equal(det.cartaoNome, 'Nubank');
+  // Resumo
+  assert.equal(det.resumo.qtdPagas, 2);
+  assert.equal(det.resumo.qtdPendentes, 4);
+  assert.equal(det.resumo.totalPagoCentavos, 200000, '2x 100000 = 200000');
+  assert.equal(det.resumo.totalPendenteCentavos, 400000);
+  assert.equal(det.resumo.percentualPago, 200000 / 600000 * 100);
+  assert.equal(det.resumo.primeiroVencimento, '2026-08-10');
+  assert.equal(det.resumo.ultimoVencimento, '2027-01-10');
+  assert.ok(det.resumo.dataQuitacao == null, 'ainda nao quitou');
+  assert.equal(det.resumo.duracaoMeses, 6);
+  // Paga o resto
+  for (let i = 2; i < 6; i++) pagarParcela(db, ps[i][0]);
+  const det2 = obterParcelamentoCompleto(db, 1);
+  assert.equal(det2.resumo.qtdPagas, 6);
+  assert.equal(det2.resumo.qtdPendentes, 0);
+  assert.equal(det2.resumo.percentualPago, 100);
+  assert.ok(det2.resumo.dataQuitacao != null, 'dataQuitacao preenchida');
+});
+
+test('parcelamentos: obterParcelamentoCompleto retorna null pra ID inexistente', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const r = obterParcelamentoCompleto(db, 9999);
+  assert.equal(r, null);
+});
+
+test('parcelamentos: calendarioCompletoParcelas agrupa por mes com totais corretos', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartaoId = setupCartaoParaParcelamento(db, cid);
+  // 2 parcelamentos que comecam no mesmo mes
+  criarParcelamento(db, { contextoId: cid, descricao: 'A', valorTotalCentavos: 30000, numParcelas: 3, cartaoId, dataPrimeiraParcela: '2026-08-10' });
+  criarParcelamento(db, { contextoId: cid, descricao: 'B', valorTotalCentavos: 12000, numParcelas: 3, cartaoId, dataPrimeiraParcela: '2026-08-10' });
+  // Paga 1a do A
+  const psA = listarParcelas(db, 1);
+  pagarParcela(db, psA[0][0]);
+  const cal = calendarioCompletoParcelas(db, cid, 6);
+  const mes0 = cal[0];
+  // Mes 0 deve ter 2 parcelas (1 de cada parcelamento), 1 paga e 1 pendente
+  assert.equal(mes0.qtdParcelas, 2);
+  assert.equal(mes0.totalCentavos, 10000 + 4000, '10000 (A) + 4000 (B) = 14000');
+  assert.equal(mes0.totalPagasCentavos, 10000, 'A 1a parcela paga');
+  assert.equal(mes0.totalPendentesCentavos, 4000, 'B 1a parcela pendente');
 });

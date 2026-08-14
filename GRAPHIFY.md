@@ -1,22 +1,22 @@
 # GRAPHIFY — Mapa técnico do MLopes Finance
 
-> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-14T12:45:19.027Z.
+> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-14T14:22:21.135Z.
 > Não editar manualmente. Fonte da verdade: `src/` e `tools/`.
 
 ## Resumo
 
 | Categoria | Quantidade |
 |---|---|
-| core | 13 |
-| tela | 8 |
+| core | 14 |
+| tela | 9 |
 | backend | 5 |
 | sql | 1 |
 | vendor | 0 |
 | tool | 8 |
 
-Total: 38 módulos.
+Total: 40 módulos.
 
-## core (13)
+## core (14)
 
 ### `src/js/backend/core/backup.js`
 
@@ -82,6 +82,14 @@ MLopes Finance — importacao de extratos OFX e CSV
 
 **Imports:** validarData, validarValorCentavos ← `./financeiro.js`; calcularCicloDaCompra, abrirFatura ← `./cartoes.js`
 
+### `src/js/backend/core/parcelamentos.js`
+
+MLopes Finance — Parcelamentos (v0.11.0)
+
+**Exports:** `criarParcelamento`, `listarParcelamentos`, `listarParcelas`, `pagarParcela`, `excluirParcelamento`, `projecaoParcelasPorMes`, `resumoCompletoPorMes`, `calendarioCompletoParcelas`, `obterParcelamentoCompleto`
+
+**Imports:** criarLancamento ← `./lancamentos.js`; calcularCicloDaCompra, abrirFatura ← `./cartoes.js`
+
 ### `src/js/backend/core/recorrencias.js`
 
 MLopes Finance — recorrencias
@@ -132,7 +140,7 @@ MLopes Finance — atualizacao online (parte PURA: sem DOM, sem Neutralino, sem 
 
 **Exports:** `criarApi`
 
-**Imports:** criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto, atualizarConta, atualizarCategoria, excluirContexto, excluirConta, excluirCategoria, saldoPorConta ← `./core/financeiro.js`; conciliarLancamento, criarLancamento, resumo, excluirLancamento, excluirTodosLancamentos, estornarLancamento, editarLancamento, listarLancamentos, listarLancamentosDetalhados, obterLancamento ← `./core/lancamentos.js`; getAllConfig, getConfig, setConfig, deleteConfig, resetConfig ← `./core/configuracoes.js`; criarBackup, radiografar, restaurarBackup, validarCiclo, resetarBanco ← `./core/backup.js`; criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento, excluirCliente, excluirFornecedor, excluirProjeto, excluirCentroCusto, excluirTag, desvincularTagLancamento ← `./core/cadastros.js`; criarTransferencia, listarTransferencias, excluirTransferencia ← `./core/transferencias.js`; registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa ← `./core/baixas.js`; criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias, excluirRecorrencia, desativarRecorrencia ← `./core/recorrencias.js`; criarCustoFixo, listarCustosFixos, totalCustosFixosMes, resumoCustosFixosMes, gerarOcorrenciasMesAtual, alternarCustoFixo, excluirCustoFixo ← `./core/custosFixos.js`; criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura, atualizarCartao, excluirCartao, listarFaturasDetalhadas, listarLancamentosDaFatura, calcularCicloDaCompra, faturaAtualDoCartao ← `./core/cartoes.js`; criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao ← `./core/importacao.js`; balancete, comparativo, exportaCSV, gastosPorMes, topCategorias, topDespesas, gastosPorConta, faturasAVencer, variacaoMensal, alertas, exportarMovimentosCSV ← `./core/relatorios.js`; compararVersao ← `./core/update.js`; checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, listarReleases, pathTempInstalador ← `./update.js`; APP_VERSION ← `./ambiente.js`
+**Imports:** criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto, atualizarConta, atualizarCategoria, excluirContexto, excluirConta, excluirCategoria, saldoPorConta ← `./core/financeiro.js`; conciliarLancamento, criarLancamento, resumo, excluirLancamento, excluirTodosLancamentos, estornarLancamento, editarLancamento, listarLancamentos, listarLancamentosDetalhados, obterLancamento ← `./core/lancamentos.js`; getAllConfig, getConfig, setConfig, deleteConfig, resetConfig ← `./core/configuracoes.js`; criarBackup, radiografar, restaurarBackup, validarCiclo, resetarBanco ← `./core/backup.js`; criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento, excluirCliente, excluirFornecedor, excluirProjeto, excluirCentroCusto, excluirTag, desvincularTagLancamento ← `./core/cadastros.js`; criarTransferencia, listarTransferencias, excluirTransferencia ← `./core/transferencias.js`; registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa ← `./core/baixas.js`; criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias, excluirRecorrencia, desativarRecorrencia ← `./core/recorrencias.js`; criarCustoFixo, listarCustosFixos, totalCustosFixosMes, resumoCustosFixosMes, gerarOcorrenciasMesAtual, alternarCustoFixo, excluirCustoFixo ← `./core/custosFixos.js`; criarParcelamento, listarParcelamentos, listarParcelas, pagarParcela, excluirParcelamento, projecaoParcelasPorMes, resumoCompletoPorMes, calendarioCompletoParcelas, obterParcelamentoCompleto ← `./core/parcelamentos.js`; criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura, atualizarCartao, excluirCartao, listarFaturasDetalhadas, listarLancamentosDaFatura, calcularCicloDaCompra, faturaAtualDoCartao ← `./core/cartoes.js`; criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao ← `./core/importacao.js`; balancete, comparativo, exportaCSV, gastosPorMes, topCategorias, topDespesas, gastosPorConta, faturasAVencer, variacaoMensal, alertas, exportarMovimentosCSV ← `./core/relatorios.js`; compararVersao ← `./core/update.js`; checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, listarReleases, pathTempInstalador ← `./update.js`; APP_VERSION ← `./ambiente.js`
 
 ### `src/js/backend/update.js`
 
@@ -142,7 +150,7 @@ MLopes Finance — atualizacao online (parte IMPURA: usa Neutralino + curl.exe).
 
 **Imports:** compararVersao, escolherAsset, renderizarMarkdownSimples ← `./core/update.js`
 
-## tela (8)
+## tela (9)
 
 ### `src/js/telas/cadastros-generico.js`
 
@@ -197,6 +205,14 @@ MLopes Finance — Tela de Importação de Extratos (OFX / CSV)
 **Exports:** `renderImportacao`
 
 **API calls:** `contas:listar`, `contextos:listar`, `importacao:criarPrevia`, `importacao:listarItens`, `importacao:confirmar`, `importacao:cancelar`, `importacao:listar`, `importacao:contarPorStatus`, `importacao:excluir`, `importacao:reciclar`, `importacao:excluirLancamentos`
+
+### `src/js/telas/parcelamentos.js`
+
+MLopes Finance — Tela de Parcelamentos (v0.11.0)
+
+**Exports:** `renderParcelamentos`
+
+**API calls:** `cartoes:listar`, `categorias:listar`, `contas:listar`, `parcelamentos:listar`, `parcelamentos:calendarioCompleto`, `parcelamentos:obterCompleto`, `parcelamentos:excluir`, `parcelamentos:pagarParcela`, `parcelamentos:criar`
 
 ### `src/js/telas/relatorios.js`
 
@@ -254,7 +270,7 @@ MLopes Finance — GRAPHIFY.md generator
 
 ### `src/js/backend/schema.sql`
 
-**Tabelas:** `meta`, `contextos_financeiros`, `contas`, `categorias`, `lancamentos`, `auditoria`, `configuracoes`, `clientes`, `fornecedores`, `projetos`, `centros_custo`, `tags`, `lancamento_tags`, `transferencias`, `baixas`, `recorrencias`, `cartoes`, `faturas`, `importacoes`, `itens_importacao`, `anexos`, `conciliacoes`
+**Tabelas:** `meta`, `contextos_financeiros`, `contas`, `categorias`, `lancamentos`, `auditoria`, `configuracoes`, `clientes`, `fornecedores`, `projetos`, `centros_custo`, `tags`, `lancamento_tags`, `transferencias`, `baixas`, `recorrencias`, `cartoes`, `faturas`, `importacoes`, `itens_importacao`, `anexos`, `conciliacoes`, `parcelamentos`, `parcelas`
 
-**Indices:** `idx_lancamentos_contexto_data`, `idx_baixas_lancamento`, `idx_clientes_contexto`, `idx_fornecedores_contexto`, `idx_projetos_contexto`, `idx_centros_custo_contexto`, `idx_tags_contexto`, `idx_faturas_cartao`, `idx_importacoes_contexto`, `idx_itens_importacao_status`, `idx_itens_importacao_chave`, `idx_anexos_lancamento`, `idx_conciliacoes_conta`
+**Indices:** `idx_lancamentos_contexto_data`, `idx_baixas_lancamento`, `idx_clientes_contexto`, `idx_fornecedores_contexto`, `idx_projetos_contexto`, `idx_centros_custo_contexto`, `idx_tags_contexto`, `idx_faturas_cartao`, `idx_importacoes_contexto`, `idx_itens_importacao_status`, `idx_itens_importacao_chave`, `idx_anexos_lancamento`, `idx_conciliacoes_conta`, `idx_parcelamentos_contexto`, `idx_parcelas_parcelamento`, `idx_parcelas_vencimento`, `idx_parcelas_fatura`
 

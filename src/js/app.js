@@ -10,9 +10,10 @@ import { renderContextos } from './telas/contextos.js';
 import { renderCartoes } from './telas/cartoes.js';
 import { renderFaturas } from './telas/faturas.js';
 import { renderCustosFixos } from './telas/custosFixos.js';
+import { renderParcelamentos } from './telas/parcelamentos.js';
 import * as updUI from './update.js';
 
-const APP_VERSION = '0.10.1';
+const APP_VERSION = '0.11.0';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = []; let appDbPath = '';
 const $ = (s) => document.querySelector(s); const app = $('#app');
@@ -242,6 +243,7 @@ function render(view) {
     return renderFaturas(contextoId, api, filtro);
   }
   if (view === 'custosfixos') return renderCustosFixos(contextoId, api);
+  if (view === 'parcelamentos') return renderParcelamentos(contextoId, api);
   if (view === 'contextos') return renderContextos(contextoId, api, (novoId) => trocarContextoAtivo(novoId, api));
   if (view === 'configuracoes') return renderConfiguracoes(contextoId, api, appDbPath);
   return renderDashboard();
@@ -290,6 +292,8 @@ function renderDashboard() {
   const faturasCartoes = cartoes.map(c => ({ cartao: c, faturaAtual: api('dashboard:faturaAtual', { cartaoId: c[0] }) }));
   // v0.10.1: resumo de custos fixos do mes
   const custosFixosResumo = api('custosFixos:resumoMes', { contextoId });
+  // v0.11.0: projecao consolidada dos proximos 6 meses (parcelas + faturas + custos fixos) + calendario completo de parcelas
+  const projecaoCompleta = api('parcelamentos:resumoCompleto', { contextoId, mesesFuturos: 6 });
   // Separa contas por tipo (cartao nao mostra saldo — confunde)
   const contasBancarias = saldosContas.filter(c => c.tipo === 'bancaria' || c.tipo === 'investimento');
   const contasCartao = saldosContas.filter(c => c.tipo === 'cartao');

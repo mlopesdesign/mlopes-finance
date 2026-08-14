@@ -255,3 +255,36 @@ CREATE INDEX IF NOT EXISTS idx_itens_importacao_status ON itens_importacao(impor
 CREATE INDEX IF NOT EXISTS idx_itens_importacao_chave ON itens_importacao(chave_externa);
 CREATE INDEX IF NOT EXISTS idx_anexos_lancamento ON anexos(lancamento_id);
 CREATE INDEX IF NOT EXISTS idx_conciliacoes_conta ON conciliacoes(conta_id, data_inicio);
+
+-- v0.11.0: Parcelamentos
+CREATE TABLE IF NOT EXISTS parcelamentos (
+  id INTEGER PRIMARY KEY,
+  contexto_id INTEGER NOT NULL REFERENCES contextos_financeiros(id),
+  descricao TEXT NOT NULL,
+  valor_total_centavos INTEGER NOT NULL CHECK (valor_total_centavos > 0),
+  num_parcelas INTEGER NOT NULL CHECK (num_parcelas >= 2),
+  cartao_id INTEGER REFERENCES cartoes(id) ON DELETE SET NULL,
+  categoria_id INTEGER REFERENCES categorias(id) ON DELETE SET NULL,
+  conta_pagamento_id INTEGER REFERENCES contas(id) ON DELETE SET NULL,
+  dia_vencimento INTEGER NOT NULL DEFAULT 10 CHECK (dia_vencimento BETWEEN 1 AND 31),
+  data_primeira_parcela TEXT NOT NULL,
+  observacoes TEXT NOT NULL DEFAULT '',
+  ativo INTEGER NOT NULL DEFAULT 1,
+  criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS parcelas (
+  id INTEGER PRIMARY KEY,
+  parcelamento_id INTEGER NOT NULL REFERENCES parcelamentos(id) ON DELETE CASCADE,
+  numero INTEGER NOT NULL CHECK (numero >= 1),
+  data_vencimento TEXT NOT NULL,
+  valor_centavos INTEGER NOT NULL CHECK (valor_centavos > 0),
+  status TEXT NOT NULL CHECK (status IN ('pendente','paga')) DEFAULT 'pendente',
+  lancamento_id INTEGER REFERENCES lancamentos(id) ON DELETE SET NULL,
+  fatura_id INTEGER REFERENCES faturas(id) ON DELETE SET NULL,
+  paga_em TEXT,
+  UNIQUE(parcelamento_id, numero)
+);
+CREATE INDEX IF NOT EXISTS idx_parcelamentos_contexto ON parcelamentos(contexto_id, ativo);
+CREATE INDEX IF NOT EXISTS idx_parcelas_parcelamento ON parcelas(parcelamento_id, numero);
+CREATE INDEX IF NOT EXISTS idx_parcelas_vencimento ON parcelas(data_vencimento, status);
+CREATE INDEX IF NOT EXISTS idx_parcelas_fatura ON parcelas(fatura_id);
