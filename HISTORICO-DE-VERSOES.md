@@ -1,3 +1,15 @@
+## 0.11.3 — Detecção por fatura paga + calendário separado Finalizados/Vigentes
+
+- **Motivação do user**: "ele importou mas não detectou o que já foi pago e finalizado, os finalizados deveriam ficar separados dos vigentes, simples de ver pelas datas" + "isso esta ilegivel". A v0.11.1 detectava parcelas a partir do extrato mas só marcava como pagas se o LANÇAMENTO tivesse status `conciliado`/`estornado`. No caso real do Marcio, os lançamentos do cartão foram importados com status `aberto` (default), mas as FATURAS dos meses passados já tinham sido pagas (status `paga`). Resultado: 0 parcelas marcadas como pagas mesmo com 7 meses de extrato já pago.
+- **Backend `criarParcelamentosDetectados`** (consertado): agora checa TANTO o status do lançamento QUANTO o status da fatura vinculada. Se `faturas.status='paga'` OU `valor_pago_centavos >= valor_total_centavos`, a parcela é marcada como `paga` automaticamente.
+- **UI `telas/parcelamentos.js`** (refeita, "Resumo mês a mês completo até quitar"):
+  - **Separação clara** em 2 seções: "📅 Vigentes — a pagar" (parcelas com `totalPendentesCentavos > 0`) e "✅ Finalizados — quitados" (parcelas com tudo pago). Borda colorida por status: verde (quitado), vermelho (pendente no passado), brand (pendente no futuro).
+  - **Layout de tabela** em vez de cards estreitos cortando nome. Cada mês vira 1 painel com tabela (Compra / Parcela / Valor / Status). Sem truncar, sem scroll horizontal.
+  - Cada parcela mostra pill "✓ Paga" ou "Pendente" (substitui o "riscado + opacidade" que era confuso).
+- **1 teste novo** (135 → **136/136 verde**): `criarParcelamentosDetectados marca como paga se a FATURA vinculada ja foi paga (cartao de credito)`. Simula o caso real: 3 lançamentos importados com status `aberto`, 2 faturas pagas (08 e 09) + 1 fatura aberta (10). Espera: parcelas 1 e 2 PAGAS, parcela 3 PENDENTE.
+- **Bump v0.11.2 → v0.11.3** (5 lugares via `Edit`).
+- **Motivação do user** (gravada pra nunca mais): "ele importou mas não detectou o que já foi pago". Regra de ouro: **sempre que houver detecção a partir de uma fonte, considerar TODOS os sinais disponíveis** (status do lançamento, status da fatura, data de vencimento, valor pago vs total). Não basta olhar uma fonte só.
+
 ## 0.11.2 — HOTFIX: tela de Faturas não carregava (helper `fmtData` faltando)
 
 - **Sintoma**: ao clicar em "Faturas" na sidebar, aparecia erro `Uncaught ReferenceError: fmtData is not defined at http://127.0.0.1:55072/js/telas/faturas.js:67` e a tela ficava em branco.

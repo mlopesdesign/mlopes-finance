@@ -2411,3 +2411,48 @@ test('parcelamentos: criarParcelamentosDetectados cria parcelas faltantes e marc
   assert.equal(p2[4], 'pendente');
   assert.equal(p3[4], 'pendente');
 });
+
+test('parcelamentos: criarParcelamentosDetectados marca como paga se a FATURA vinculada ja foi paga (cartao de credito)', async () => {
+  // Caso real do Marcio: importou OFX do Nubank, lancamento tem status='aberto',
+  // MAS a fatura do cartao do mes ja foi paga. A deteccao tem que olhar a fatura tambem.
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  // Cria cartao com conta_pagamento_id e conta_associada_id (cartao de credito)
+  const contaCartao = criarConta(db, { contextoId: cid, nome: 'Cartao Nubank', tipo: 'cartao' });
+  db.run(`INSERT INTO cartoes (contexto_id, nome, dia_fechamento, dia_vencimento, limite_centavos, conta_pagamento_id, conta_associada_id) VALUES (?, 'Nubank', 5, 15, 100000, ?, ?)`,
+    [cid, cb, contaCartao]);
+  const cartaoId = Number(db.exec('SELECT last_insert_rowid() AS id')[0].values[0][0]);
+  // Cria 3 lancamentos de parcelas via criarLancamento (que auto-vincula a fatura do ciclo
+  // via cartoes.conta_associada_id). Status 'aberto' (recem importados).
+  for (let i = 1; i <= 3; i++) {
+    const d = String(i + 7).padStart(2, '0');
+    criarLancamento(db, {
+      contextoId: cid,
+      contaId: contaCartao,  // tipo 'cartao' — auto-vincula a fatura via conta_associada_id
+      natureza: 'despesa',
+      valorCentavos: 25000,
+      dataCompetencia: `2026-${d}-11`,
+      descricao: `Amazon - Parcela ${i}/3`,
+    });
+  }
+  // Pega IDs das faturas recem-criadas pelo criarLancamento
+  const faturasCriadas = db.exec(`SELECT id, ciclo FROM faturas WHERE cartao_id = ? ORDER BY ciclo`, [cartaoId])[0]?.values ?? [];
+  console.log('Faturas criadas:', faturasCriadas);
+  const f1 = faturasCriadas[0]?.[0];
+  const f2 = faturasCriadas[1]?.[0];
+  if (f1) pagarFatura(db, { faturaId: f1, contaPagamentoId: cb, valorCentavos: 50000, dataPagamento: '2026-08-15' });
+  if (f2) pagarFatura(db, { faturaId: f2, contaPagamentoId: cb, valorCentavos: 50000, dataPagamento: '2026-09-15' });
+  // Detecta e cria
+  const det = detectarParcelamentosDoExtrato(db, cid, cartaoId);
+  const r = criarParcelamentosDetectados(db, cid, cartaoId, [det[0]]);
+  assert.equal(r[0].ok, true);
+  // Verifica: parcela 1 e 2 PAGAS (fatura paga), parcela 3 PENDENTE (fatura aberta)
+  const ps = listarParcelas(db, r[0].parcelamentoId);
+  const p1 = ps.find(p => p[1] === 1);
+  const p2 = ps.find(p => p[1] === 2);
+  const p3 = ps.find(p => p[1] === 3);
+  assert.equal(p1[4], 'paga', 'parcela 1 marcada como paga (fatura 08 paga)');
+  assert.equal(p2[4], 'paga', 'parcela 2 marcada como paga (fatura 09 paga)');
+  assert.equal(p3[4], 'pendente', 'parcela 3 pendente (fatura 10 aberta)');
+});

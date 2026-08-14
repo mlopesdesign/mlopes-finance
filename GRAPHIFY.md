@@ -1,6 +1,6 @@
 # GRAPHIFY — Mapa técnico do MLopes Finance
 
-> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-14T15:14:03.659Z.
+> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-14T19:33:24.574Z.
 > Não editar manualmente. Fonte da verdade: `src/` e `tools/`.
 
 ## Resumo
@@ -12,9 +12,9 @@
 | backend | 5 |
 | sql | 1 |
 | vendor | 0 |
-| tool | 8 |
+| tool | 11 |
 
-Total: 40 módulos.
+Total: 43 módulos.
 
 ## core (14)
 
@@ -222,7 +222,9 @@ MLopes Finance — Tela de Relatórios e Balancete (Fase 6)
 
 **API calls:** `relatorios:comparativo`, `relatorios:balancete`, `relatorios:exportarCSV`
 
-## tool (8)
+## tool (11)
+
+### `tools/app-recovered.js`
 
 ### `tools/build-resources.mjs`
 
@@ -254,6 +256,12 @@ Debug: cria um banco via novoBanco e checa colunas de lancamentos
 
 **Imports:** fileURLToPath ← `node:url`; migrar ← `../src/js/backend/migracoes.js`
 
+### `tools/debug-fatura-test.mjs`
+
+Debug isolado do teste que falha
+
+**Imports:** fileURLToPath ← `node:url`
+
 ### `tools/debug-ofx-nubank.mjs`
 
 Debug: testa o parser OFX atual no arquivo do Marcio
@@ -263,6 +271,12 @@ Debug: testa o parser OFX atual no arquivo do Marcio
 ### `tools/graphify.mjs`
 
 MLopes Finance — GRAPHIFY.md generator
+
+**Imports:** fileURLToPath ← `node:url`
+
+### `tools/smoke-telas-runtime.mjs`
+
+Smoke test RUNTIME: importa cada tela e tenta renderizar num banco vazio.
 
 **Imports:** fileURLToPath ← `node:url`
 

@@ -684,10 +684,30 @@ export function criarParcelamentosDetectados(db, contextoId, cartaoId, candidato
           parcelasVinculadas++;
         }
       }
-      // 4. Se a parcela ja foi paga (status conciliado/estornado no lancamento), marca a parcela como paga tambem
+      // 4. Marca como paga: (a) lancamento ja conciliado/estornado, OU
+      //                   (b) a fatura vinculada ao lancamento ja foi paga (cartao de credito).
+      //    Caso (b) eh o caso comum: usuario importou o extrato do Nubank com 7 OFX
+      //    e cada lancamento vira 'aberto', mas as faturas dos meses passados
+      //    foram pagas pelo usuario (a fatura tem status='paga').
       for (const it of itensOrdenados) {
-        const statusLanc = db.exec('SELECT status FROM lancamentos WHERE id = ?', [it.lancamentoId])[0]?.values?.[0]?.[0];
-        if (statusLanc === 'conciliado' || statusLanc === 'estornado') {
+        // Pega status do lancamento
+        const statusLanc = db.exec('SELECT status, fatura_id FROM lancamentos WHERE id = ?', [it.lancamentoId])[0]?.values?.[0];
+        let statusFat = null;
+        if (statusLanc && statusLanc[1] != null) {
+          // Tem fatura_id no lancamento — checa se foi paga
+          const fatRow = db.exec('SELECT status, valor_pago_centavos, valor_total_centavos FROM faturas WHERE id = ?',
+            [statusLanc[1]])[0]?.values?.[0];
+          if (fatRow) {
+            const fStatus = fatRow[0];
+            const fPago = Number(fatRow[1] || 0);
+            const fTotal = Number(fatRow[2] || 0);
+            if (fStatus === 'paga' || (fTotal > 0 && fPago >= fTotal)) {
+              statusFat = 'paga';
+            }
+          }
+        }
+        const statusFinal = statusLanc ? statusLanc[0] : null;
+        if (statusFinal === 'conciliado' || statusFinal === 'estornado' || statusFat === 'paga') {
           db.run(`UPDATE parcelas SET status = 'paga', paga_em = ? WHERE parcelamento_id = ? AND numero = ?`,
             [it.dataCompetencia, parcelamentoId, it.numero]);
         }

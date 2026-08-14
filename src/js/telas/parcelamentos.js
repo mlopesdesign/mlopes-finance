@@ -153,44 +153,66 @@ export function renderParcelamentos(contextoId, api) {
         Calendário de TODAS as parcelas (ativas + quitadas) agrupadas por mês, do mês atual até o mês da <strong>última parcela</strong>${ultimaParcelaMes ? ` (<strong>${fmtMes(ultimaParcelaMes)}</strong>)` : ''}.
         Pra cada mês: total a pagar, total já pago, e quais parcelas vencem. Clica numa parcela pra ver o detalhe.
       </p>
-      ${calendario.every(m => m.qtdParcelas === 0) ? '<div class="empty">Nenhuma parcela cadastrada ainda.</div>' : `
-      <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:12px;">
-        ${calendario.map(m => {
-          const isFuturo = m.mes >= new Date().toISOString().slice(0, 7);
-          const corBorda = m.totalPendentesCentavos > 0
-            ? (isFuturo ? 'var(--brand)' : 'var(--negative)')
-            : 'var(--positive)';
+      ${calendario.every(m => m.qtdParcelas === 0) ? '<div class="empty">Nenhuma parcela cadastrada ainda.</div>' : (() => {
+        // Separa os meses em FINALIZADOS (todos pagos OU no passado sem pendentes)
+        // vs VIGENTES (tem algo a pagar, mesmo que ja venceu).
+        // Um mes eh "finalizado" se:
+        //   - tem parcelas E todas estao pagas, OU
+        //   - ja passou do mes atual e nao tem pendentes (venceram e foram pagas)
+        const hoje = new Date().toISOString().slice(0, 7);
+        const comParcela = calendario.filter(m => m.qtdParcelas > 0);
+        const finalizados = comParcela.filter(m => m.totalPendentesCentavos === 0);
+        const vigentes = comParcela.filter(m => m.totalPendentesCentavos > 0);
+        // Renderiza uma secao (mes com label + tabela com 1 linha por parcela)
+        const renderMes = (m) => {
+          const isPassado = m.mes < hoje;
+          const tudoPago = m.totalPendentesCentavos === 0;
+          const corLabel = tudoPago ? 'var(--positive)' : (isPassado ? 'var(--negative)' : 'var(--brand)');
           return `
-            <div class="card" style="padding:14px; border-left: 3px solid ${corBorda};">
-              <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;">
-                <span class="card-label" style="margin:0;">${fmtMes(m.mes)}</span>
-                ${m.qtdParcelas > 0 ? `<span style="font-size:11px; color:var(--muted);">${m.qtdParcelas} parcela(s)</span>` : ''}
+            <div class="panel" style="margin-bottom: 12px; border-left: 4px solid ${corLabel};">
+              <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 8px;">
+                <h3 style="margin:0; color: ${corLabel};">${fmtMes(m.mes)}</h3>
+                <div style="display:flex; gap:12px; font-size:13px;">
+                  ${tudoPago ? '<span style="color:var(--positive); font-weight:600;">✓ Quitado</span>' : ''}
+                  ${m.totalPagasCentavos > 0 ? `<span class="muted">${money(m.totalPagasCentavos)} pago</span>` : ''}
+                  ${m.totalPendentesCentavos > 0 ? `<span style="color:var(--negative); font-weight:600;">${money(m.totalPendentesCentavos)} pendente</span>` : ''}
+                  <span style="color:var(--muted);">Total: <strong>${money(m.totalCentavos)}</strong></span>
+                </div>
               </div>
-              ${m.qtdParcelas === 0 ? `
-                <div style="font-size:13px; color:var(--muted); padding: 4px 0;">— sem parcelas —</div>
-              ` : `
-                <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">
-                  ${m.totalPagasCentavos > 0 ? `<span style="color:var(--positive);">${money(m.totalPagasCentavos)} pago</span> · ` : ''}
-                  <span style="color:var(--negative); font-weight:600;">${money(m.totalPendentesCentavos)} pendente</span>
-                </div>
-                <div style="font-size:11px; color:var(--muted); margin-bottom:6px;">Total mês: <strong>${money(m.totalCentavos)}</strong></div>
-                <div style="font-size:11px; line-height:1.5; max-height: 100px; overflow-y:auto;">
-                  ${m.parcelas.map(p => {
-                    const isPaga = p.status === 'paga';
-                    return `
-                      <div style="display:flex; justify-content:space-between; gap:6px; padding:2px 0;">
-                        <span style="${isPaga ? 'text-decoration:line-through; opacity:0.6;' : ''}">${escapeHtml(p.descricao.slice(0, 18))}${p.descricao.length > 18 ? '…' : ''} <span style="color:var(--muted);">${p.parcelaNumero}/${p.totalParcelas}</span></span>
-                        <span style="${isPaga ? 'color:var(--positive); opacity:0.6;' : 'color:var(--negative);'} white-space:nowrap;">${money(p.valorCentavos)}</span>
-                      </div>
-                    `;
-                  }).join('')}
-                </div>
-              `}
+              <div style="overflow-x:auto;">
+                <table>
+                  <thead>
+                    <tr><th style="text-align:left;">Compra</th><th style="text-align:center;">Parcela</th><th style="text-align:right;">Valor</th><th style="text-align:center;">Status</th></tr>
+                  </thead>
+                  <tbody>
+                    ${m.parcelas.map(p => {
+                      const isPaga = p.status === 'paga';
+                      return `
+                        <tr style="${isPaga ? 'opacity:0.55;' : ''}">
+                          <td style="${isPaga ? 'text-decoration:line-through;' : ''}">${escapeHtml(p.descricao)}</td>
+                          <td style="text-align:center;">${p.parcelaNumero}/${p.totalParcelas}</td>
+                          <td style="text-align:right;">${money(p.valorCentavos)}</td>
+                          <td style="text-align:center;">${isPaga ? '<span class="pill" style="color:var(--positive);">✓ Paga</span>' : '<span class="pill warn">Pendente</span>'}</td>
+                        </tr>
+                      `;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
             </div>
           `;
-        }).join('')}
-      </div>
-      `}
+        };
+        let html = '';
+        if (vigentes.length > 0) {
+          html += `<h3 style="margin: 20px 0 10px 0; color: var(--brand);">📅 Vigentes — a pagar (${vigentes.length} ${vigentes.length === 1 ? 'mes' : 'meses'})</h3>`;
+          html += vigentes.map(renderMes).join('');
+        }
+        if (finalizados.length > 0) {
+          html += `<h3 style="margin: 24px 0 10px 0; color: var(--positive);">✅ Finalizados — quitados (${finalizados.length} ${finalizados.length === 1 ? 'mes' : 'meses'})</h3>`;
+          html += finalizados.map(renderMes).join('');
+        }
+        return html;
+      })()}
     </div>
 
     <div id="parcelamento-form-container" style="display:none;"></div>
