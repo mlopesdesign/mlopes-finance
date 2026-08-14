@@ -138,9 +138,18 @@ export function criarPreviaImportacao(db, { contextoId, arquivoOrigem, formato, 
   } else throw new Error(`Formato nao suportado: ${formato}`);
   if (itens.length === 0) throw new Error('Arquivo vazio ou sem transacoes reconheciveis.');
   const hash = hashString(conteudo);
-  // Verifica se ja foi importado
-  const dup = db.exec('SELECT id FROM importacoes WHERE hash_arquivo = ? AND contexto_id = ? AND status = ?', [hash, contextoId, 'confirmada'])[0]?.values?.[0]?.[0];
-  if (dup) throw new Error(`Este arquivo ja foi importado (importacao #${dup}). Reimportacao bloqueada.`);
+  // v0.8.20: Bloqueia reimportacao se ja existe QUALQUER importacao anterior (mesmo
+  // 'previa' ou 'cancelada') com o mesmo hash+contexto. Antes so bloqueava
+  // 'confirmada', o que permitia duplicacao de arquivos que ficaram orfaos apos
+  // excluir todos os lancamentos (deixava 2x o mesmo arquivo no banco).
+  // Para forcar uma nova previa, o usuario precisa EXCLUIR a importacao anterior
+  // pelo botao "Excluir" do historico.
+  const dup = db.exec('SELECT id, status FROM importacoes WHERE hash_arquivo = ? AND contexto_id = ?', [hash, contextoId])[0]?.values?.[0];
+  if (dup) {
+    const idDup = dup[0];
+    const statusDup = dup[1];
+    throw new Error(`Este arquivo ja tem uma importacao (#${idDup}, status=${statusDup}) neste contexto. Exclua a anterior pelo historico para criar uma nova previa.`);
+  }
   db.run(`INSERT INTO importacoes (contexto_id, arquivo_origem, formato, hash_arquivo, total_registros, mapeamento_csv, status) VALUES (?, ?, ?, ?, ?, ?, 'previa')`,
     [contextoId, arquivoOrigem, formato, hash, itens.length, mapeamentoCsv]);
   const idImport = Number(db.exec('SELECT last_insert_rowid() AS id')[0].values[0][0]);
@@ -264,6 +273,43 @@ export function listarImportacoes(db, contextoId) {
   return db.exec('SELECT * FROM importacoes WHERE contexto_id = ? ORDER BY criado_em DESC', [contextoId])[0]?.values ?? [];
 }
 
+/**
+ * v0.8.20: Recicla uma importacao "morta" — marca TODOS os itens 'ignorado' ou
+ * 'duplicado' como 'pendente' para que possam ser confirmados novamente.
+ *
+ * Caso de uso: o usuario excluiu todos os lancamentos de uma importacao
+ * confirmada, e o sistema marcou os 63+ itens como 'ignorado' (regra do
+ * lifecycle). Sem este caminho, o usuario nao tinha como re-confirmar a mesma
+ * importacao — tinha que excluir a importacao inteira e reimportar do zero.
+ *
+ * NUNCA altera o status da importacao (continua 'previa'/'confirmada'/'cancelada').
+ * Retorna { ok, reciclados, status, mensagem }.
+ */
+export function reciclarImportacao(db, importacaoId) {
+  if (!Number.isInteger(importacaoId)) throw new Error('importacaoId obrigatorio.');
+  const imp = db.exec('SELECT id, status FROM importacoes WHERE id = ?', [importacaoId])[0]?.values?.[0];
+  if (!imp) throw new Error('Importacao nao encontrada.');
+  // Conta quantos serao reciclados (so 'ignorado' e 'duplicado' — 'pendente' nao precisa,
+  // 'importado' e intocavel pq ja tem lancamento vinculado).
+  const contadores = db.exec(
+    "SELECT status, COUNT(*) FROM itens_importacao WHERE importacao_id = ? GROUP BY status",
+    [importacaoId]
+  )[0]?.values ?? [];
+  const ignorados = contadores.find((c) => c[0] === 'ignorado')?.[1] ?? 0;
+  const duplicados = contadores.find((c) => c[0] === 'duplicado')?.[1] ?? 0;
+  const reciclaveis = ignorados + duplicados;
+  if (reciclaveis === 0) {
+    return { ok: true, reciclados: 0, status: imp[1], mensagem: 'Nada para reciclar (sem itens ignorados/duplicados).' };
+  }
+  db.run("UPDATE itens_importacao SET status = 'pendente' WHERE importacao_id = ? AND status IN ('ignorado', 'duplicado')", [importacaoId]);
+  return {
+    ok: true,
+    reciclados: reciclaveis,
+    status: imp[1],
+    mensagem: `${reciclaveis} item(ns) marcados como pendente (${ignorados} ignorado, ${duplicados} duplicado). Agora voce pode confirmar a importacao.`,
+  };
+}
+
 export function cancelarImportacao(db, importacaoId) {
   db.run("UPDATE importacoes SET status = 'cancelada' WHERE id = ?", [importacaoId]);
   db.run("UPDATE itens_importacao SET status = 'ignorado' WHERE importacao_id = ? AND status = 'pendente'", [importacaoId]);
@@ -275,9 +321,14 @@ export function excluirImportacao(db, importacaoId) {
   if (!Number.isInteger(importacaoId)) throw new Error('importacaoId obrigatorio.');
   const r = db.exec('SELECT id, status FROM importacoes WHERE id = ?', [importacaoId])[0]?.values?.[0];
   if (!r) throw new Error('Importacao nao encontrada.');
+  // v0.8.20: sql.js NAO enforca FK ON DELETE CASCADE por padrao (precisa
+  // PRAGMA foreign_keys = ON que nao habilitamos). Se a gente confiasse so
+  // no DELETE da importacao, os 63+ itens_importacao ficariam orfaos no banco
+  // (FK violation silenciosa). Faz DELETE manual primeiro pra garantir.
+  const itensAntes = db.exec('SELECT COUNT(*) FROM itens_importacao WHERE importacao_id = ?', [importacaoId])[0]?.values?.[0]?.[0] ?? 0;
+  db.run('DELETE FROM itens_importacao WHERE importacao_id = ?', [importacaoId]);
   db.run('DELETE FROM importacoes WHERE id = ?', [importacaoId]);
-  // Cascade: itens_importacao.importacao_id tem ON DELETE CASCADE — apaga junto.
-  return { ok: true, id: importacaoId, statusAnterior: r[1] };
+  return { ok: true, id: importacaoId, statusAnterior: r[1], itensRemovidos: itensAntes };
 }
 
 /**

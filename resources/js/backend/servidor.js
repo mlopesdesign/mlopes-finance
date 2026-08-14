@@ -7,7 +7,7 @@ import { criarTransferencia, listarTransferencias, excluirTransferencia } from '
 import { registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa } from './core/baixas.js';
 import { criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias, excluirRecorrencia, desativarRecorrencia } from './core/recorrencias.js';
 import { criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura } from './core/cartoes.js';
-import { criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao } from './core/importacao.js';
+import { criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao } from './core/importacao.js';
 import { balancete, comparativo, exportaCSV } from './core/relatorios.js';
 import { compararVersao } from './core/update.js';
 import { checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, listarReleases, pathTempInstalador } from './update.js';
@@ -108,8 +108,15 @@ export function criarApi(db, persistir = () => {}) {
     'importacao:listar': (d) => listarImportacoes(db, d.contextoId),
     'importacao:cancelar': (d) => { cancelarImportacao(db, d.importacaoId); persistir(); return true; },
     'importacao:excluir': (d) => { const out = excluirImportacao(db, d.importacaoId); persistir(); return out; },
+    'importacao:reciclar': (d) => { const out = reciclarImportacao(db, d.importacaoId); persistir(); return out; },
     'importacao:excluirLancamentos': (d) => { const out = excluirLancamentosImportacao(db, d.importacaoId); persistir(); return out; },
     'importacao:listarItens': (d) => db.exec('SELECT id, conta_id, data_transacao, valor_centavos, descricao, chave_externa, status, lancamento_id FROM itens_importacao WHERE importacao_id = ? ORDER BY data_transacao, id', [d.importacaoId])[0]?.values ?? [],
+    'importacao:contarPorStatus': (d) => {
+      const rows = db.exec("SELECT status, COUNT(*) FROM itens_importacao WHERE importacao_id = ? GROUP BY status", [d.importacaoId])[0]?.values ?? [];
+      const out = { pendente: 0, importado: 0, ignorado: 0, duplicado: 0 };
+      for (const [status, count] of rows) out[status] = count;
+      return out;
+    },
 
     // Relatorios e balancete — Fase 6
     'relatorios:balancete': (d) => balancete(db, d),

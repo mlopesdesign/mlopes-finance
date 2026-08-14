@@ -15,7 +15,7 @@ import { criarTransferencia, listarTransferencias } from '../src/js/backend/core
 import { registrarBaixa, saldoEmAberto, listarBaixas } from '../src/js/backend/core/baixas.js';
 import { criarRecorrencia, gerarProximaOcorrencia } from '../src/js/backend/core/recorrencias.js';
 import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas } from '../src/js/backend/core/cartoes.js';
-import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, inferirNaturezaItem, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao } from '../src/js/backend/core/importacao.js';
+import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, inferirNaturezaItem, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao } from '../src/js/backend/core/importacao.js';
 import { balancete, comparativo, exportaCSV, calcularPeriodo } from '../src/js/backend/core/relatorios.js';
 import { aplicarAtualizacao, pathCacheWebView2Async, invalidarCacheWebView2 } from '../src/js/backend/update.js';
 import { excluirContexto, excluirConta, excluirCategoria } from '../src/js/backend/core/financeiro.js';
@@ -351,7 +351,7 @@ test('importacao: criarPreviaImportacao detecta duplicado contra mesmo arquivo',
   // Tentar recriar o mesmo arquivo deve dar erro
   assert.throws(
     () => criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'a.ofx', formato: 'ofx', conteudo }),
-    /ja foi importado/
+    /ja tem uma importacao/
   );
 });
 
@@ -1462,4 +1462,137 @@ test('confirmarImportacao: cartao sempre classifica como despesa', async () => {
   // Mesma palavra-chave "RECEB" sugere receita, mas cartao sempre = despesa
   assert.equal(out.inferencias[0].natureza, 'despesa', 'cartao SEMPRE = despesa (mesmo com keyword de receita)');
   assert.ok(out.inferencias[0].motivo.includes('cartão'));
+});
+
+// --- v0.8.20: correcoes de importacao ---
+
+// Bug que o Marcio pegou na pratica: importou CSV, excluiu todos os lancamentos
+// (que marcou os 63 itens como 'ignorado'), reimportou o mesmo CSV, e a checagem
+// antiga (`status='confirmada'`) DEIXOU passar porque a importacao anterior
+// nao estava mais 'confirmada' (estava 'previa'/'cancelada' por causa das
+// exclusoes). Resultado: 126 itens orfaos no banco e nada pra confirmar.
+test('importacao: criarPreviaImportacao bloqueia reimportacao mesmo se anterior NAO esta confirmada', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const csv = 'data,descricao,valor\n2026-01-02,PIX ENVIADO - teste,-100.00';
+  // 1a importacao (fica em 'previa')
+  const id1 = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'a.csv', formato: 'csv', conteudo: csv });
+  assert.equal(db.exec('SELECT status FROM importacoes WHERE id=?', [id1])[0].values[0][0], 'previa');
+  // Tentar recriar o mesmo arquivo (mesmo hash) DEVE falhar mesmo com anterior 'previa'
+  assert.throws(
+    () => criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'a.csv', formato: 'csv', conteudo: csv }),
+    /ja tem uma importacao/,
+    'reimportacao bloqueada quando anterior esta em previa (v0.8.20)'
+  );
+  // Excluir a anterior libera a criacao
+  excluirImportacao(db, id1);
+  const id2 = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'a.csv', formato: 'csv', conteudo: csv });
+  assert.ok(Number.isInteger(id2), 'id2 deve ser numero inteiro, foi: ' + id2);
+  // sql.js (e SQLite em alguns modos) pode reusar IDs apos DELETE, entao o
+  // importante e' que a nova importacao foi CRIADA e esta em status 'previa'
+  // (ou seja, nao herdou estado da anterior).
+  const status2 = db.exec('SELECT status FROM importacoes WHERE id=?', [id2])[0]?.values?.[0]?.[0];
+  assert.equal(status2, 'previa', 'nova importacao em status previa (nao cancelada/previa-antiga)');
+  // Confirma que existe 1 importacao com o hash
+  const count = db.exec('SELECT COUNT(*) FROM importacoes WHERE contexto_id=?', [cid])[0].values[0][0];
+  assert.equal(count, 1, 'so 1 importacao apos excluir+recriar (nao acumulou)');
+});
+
+test('importacao: criarPreviaImportacao bloqueia reimportacao quando anterior foi cancelada', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const csv = 'data,descricao,valor\n2026-01-02,PIX ENVIADO - teste,-100.00';
+  const id1 = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'a.csv', formato: 'csv', conteudo: csv });
+  cancelarImportacao(db, id1); // vira 'cancelada'
+  assert.throws(
+    () => criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'a.csv', formato: 'csv', conteudo: csv }),
+    /ja tem uma importacao/,
+    'reimportacao bloqueada quando anterior esta cancelada (v0.8.20)'
+  );
+});
+
+// sql.js nao enforce FK ON DELETE CASCADE por padrao. Sem o DELETE manual
+// em excluirImportacao, os 63 itens_importacao ficavam orfaos no banco
+// (FK violation silenciosa). Esse teste prova que o DELETE manual limpa
+// tudo, mesmo com FK desabilitada.
+test('importacao: excluirImportacao remove itens manualmente (sql.js nao enforce CASCADE)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const csv = 'data,descricao,valor\n2026-01-02,PIX ENVIADO - A,-100.00\n2026-01-03,PIX ENVIADO - B,-200.00';
+  const id = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'a.csv', formato: 'csv', conteudo: csv });
+  // Confirma itens foram inseridos
+  const antes = db.exec('SELECT COUNT(*) FROM itens_importacao WHERE importacao_id=?', [id])[0].values[0][0];
+  assert.equal(antes, 2);
+  // sql.js: PRAGMA foreign_keys fica OFF por padrao, entao o ON DELETE CASCADE
+  // do schema nao dispara. Excluir a importacao SEM o DELETE manual deixaria
+  // os 2 itens orfaos. Antes da v0.8.20 isso acontecia.
+  db.run('PRAGMA foreign_keys = OFF');
+  const out = excluirImportacao(db, id);
+  db.run('PRAGMA foreign_keys = ON');
+  assert.equal(out.ok, true);
+  assert.equal(out.itensRemovidos, 2);
+  // Confirma que nao ha orfaos
+  const orfaos = db.exec('SELECT COUNT(*) FROM itens_importacao WHERE importacao_id=?', [id])[0].values[0][0];
+  assert.equal(orfaos, 0, 'nenhum item orfao apos excluirImportacao (v0.8.20)');
+  const imp = db.exec('SELECT id FROM importacoes WHERE id=?', [id])[0]?.values?.length ?? 0;
+  assert.equal(imp, 0, 'importacao removida');
+});
+
+// Caso de uso direto do Marcio: importou CSV, confirmou 63 lancamentos,
+// excluiu todos -> 63 itens viraram 'ignorado'. Sem reciclarImportacao,
+// o caminho era excluir a importacao e reimportar do zero (perdia o
+// contexto de auditoria e obrigava novo upload do arquivo).
+test('importacao: reciclarImportacao marca ignorados e duplicados como pendente', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Cartao', tipo: 'cartao' });
+  const csv = 'data,descricao,valor\n2026-01-02,PIX ENVIADO - A,-100.00\n2026-01-03,PIX ENVIADO - B,-200.00\n2026-01-04,PIX ENVIADO - C,-300.00';
+  const id = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'a.csv', formato: 'csv', conteudo: csv });
+  // Simula o "Excluir todos lancamentos" — marca os 3 itens como 'ignorado'
+  db.run("UPDATE itens_importacao SET status='ignorado' WHERE importacao_id=?", [id]);
+  // Tenta confirmar — deve falhar pq nao tem 'pendente'
+  assert.throws(() => confirmarImportacao(db, { importacaoId: id, contaId }), /pendente/);
+  // Reciclar
+  const out = reciclarImportacao(db, id);
+  assert.equal(out.ok, true);
+  assert.equal(out.reciclados, 3, 'recicla os 3 ignorados');
+  // Agora confirma funciona
+  const conf = confirmarImportacao(db, { importacaoId: id, contaId });
+  assert.equal(conf.importados, 3);
+});
+
+test('importacao: reciclarImportacao nao mexe em importado (so ignorado/duplicado)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Cartao', tipo: 'cartao' });
+  // 3 itens: 1 vai virar 'importado' (intocado), 1 'ignorado' (reciclado),
+  // 1 'duplicado' (reciclado)
+  const csv = 'data,descricao,valor\n2026-01-02,PIX ENVIADO - A,-100.00\n2026-01-03,PIX ENVIADO - B,-200.00\n2026-01-04,PIX ENVIADO - C,-300.00';
+  const id = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'a.csv', formato: 'csv', conteudo: csv });
+  confirmarImportacao(db, { importacaoId: id, contaId }); // 3 viram 'importado'
+  // Forca 1 pra 'ignorado' (simula exclusao de 1 lancamento) e outro pra 'duplicado'
+  db.run("UPDATE itens_importacao SET status='ignorado' WHERE id=(SELECT id FROM itens_importacao WHERE importacao_id=? AND status='importado' ORDER BY id LIMIT 1)", [id]);
+  db.run("UPDATE itens_importacao SET status='duplicado' WHERE id=(SELECT id FROM itens_importacao WHERE importacao_id=? AND status='importado' ORDER BY id DESC LIMIT 1)", [id]);
+  // Estado agora: 1 'importado' (intocado), 1 'ignorado', 1 'duplicado'
+  const out = reciclarImportacao(db, id);
+  assert.equal(out.reciclados, 2, 'recicla 1 ignorado + 1 duplicado');
+  // O 'importado' original NAO pode ter virado 'pendente' (senao duplicaria
+  // o lancamento na hora de confirmar). O query do reciclarImportacao filtra
+  // status IN ('ignorado','duplicado'), entao 'importado' fica intocado.
+  const counts = db.exec('SELECT status, COUNT(*) FROM itens_importacao WHERE importacao_id=? GROUP BY status', [id])[0].values;
+  const importadoCount = counts.find(c => c[0] === 'importado')?.[1] ?? 0;
+  assert.equal(importadoCount, 1, 'importado permanece intocado (v0.8.20)');
+  const pendenteCount = counts.find(c => c[0] === 'pendente')?.[1] ?? 0;
+  assert.equal(pendenteCount, 2, '1 ignorado + 1 duplicado viraram pendente');
+});
+
+test('importacao: reciclarImportacao sem reciclaveis retorna ok com 0', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const csv = 'data,descricao,valor\n2026-01-02,PIX ENVIADO - A,-100.00';
+  const id = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'a.csv', formato: 'csv', conteudo: csv });
+  // Sem nenhum 'ignorado' ou 'duplicado' (so 'pendente')
+  const out = reciclarImportacao(db, id);
+  assert.equal(out.ok, true);
+  assert.equal(out.reciclados, 0);
 });

@@ -285,6 +285,11 @@ function renderHistorico() {
   div.innerHTML = `<table><thead><tr><th>#</th><th>Arquivo</th><th>Formato</th><th>Itens</th><th>Importados</th><th>Status</th><th>Data</th><th></th></tr></thead><tbody>${rows.map(r => {
     const statusClass = r[7] === 'confirmada' ? 'pill' : r[7] === 'cancelada' ? 'pill is-static' : 'pill warn';
     const importacoes = r[6] > 0;
+    // v0.8.20: Botao "Reciclar" aparece quando a importacao tem itens 'ignorado'/'duplicado'
+    // que podem voltar a 'pendente'. Caso classico: o user excluiu todos os lancamentos
+    // e os 63 itens viraram 'ignorado'. Sem Reciclar, nao tinha como re-confirmar.
+    const ignorarDup = _api('importacao:contarPorStatus', { importacaoId: r[0] });
+    const reciclaveis = (ignorarDup.ignorado || 0) + (ignorarDup.duplicado || 0);
     return `<tr>
       <td>${r[0]}</td>
       <td>${escapeHtml(String(r[2] || ''))}</td>
@@ -294,6 +299,7 @@ function renderHistorico() {
       <td><span class="${statusClass}">${r[7]}</span></td>
       <td>${String(r[9] || '').replace('T', ' ').substring(0, 19)}</td>
       <td>
+        ${reciclaveis > 0 ? `<button class="button ghost small" data-reciclar="${r[0]}" title="Marcar ${reciclaveis} item(ns) ignorado/duplicado como pendente para confirmar de novo">♻ Reciclar ${reciclaveis}</button> ` : ''}
         ${importacoes ? `<button class="button ghost small danger" data-excluir-lanc="${r[0]}" title="Excluir os ${r[6]} lançamentos desta importação (bloqueia se algum estiver conciliado)">Excluir ${r[6]} lanç.</button> ` : ''}
         <button class="button ghost small" data-excluir="${r[0]}" title="Excluir esta importação (lançamentos permanecem)">Excluir</button>
       </td>
@@ -310,6 +316,19 @@ function renderHistorico() {
         renderHistorico();
       } catch (e) {
         if (globalThis.toastErr) toastErr('Erro ao excluir: ' + e.message);
+      }
+    };
+  });
+  div.querySelectorAll('button[data-reciclar]').forEach(btn => {
+    btn.onclick = () => {
+      const id = Number(btn.dataset.reciclar);
+      if (!confirm(`Reciclar a importacao #${id}? Todos os itens 'ignorado'/'duplicado' voltam a 'pendente' e podem ser confirmados de novo.`)) return;
+      try {
+        const out = _api('importacao:reciclar', { importacaoId: id });
+        if (globalThis.toastOk) toastOk(out.mensagem || `${out.reciclados} itens reciclados.`);
+        renderHistorico();
+      } catch (e) {
+        if (globalThis.toastErr) toastErr('Erro: ' + e.message);
       }
     };
   });

@@ -169,7 +169,7 @@ export function listarLancamentos(db, contextoId, { incluirEstornados = false, l
  * Uso: botao "Excluir todos" da tela de Lancamentos, para limpar a tela sem resetar
  * o banco inteiro (o user mantem os cadastros, so limpa os movimentos).
  */
-export function excluirTodosLancamentos(db, contextoId) {
+export function excluirTodosLancamentos(db, contextoId, agora = new Date().toISOString()) {
   if (!Number.isInteger(contextoId)) throw new Error('contextoId obrigatorio.');
   // Coleta IDs antes (pq o DELETE cascata pode bagunçar a contagem)
   const ids = db.exec('SELECT id FROM lancamentos WHERE contexto_id = ?', [contextoId])[0]?.values?.map(r => r[0]) ?? [];
@@ -188,6 +188,11 @@ export function excluirTodosLancamentos(db, contextoId) {
     db.run('DELETE FROM baixas WHERE lancamento_id IN (' + ids.map(() => '?').join(',') + ')', ids);
     // 5. Excluir lancamentos (cascade: lancamento_tags via FK ON DELETE CASCADE)
     db.run('DELETE FROM lancamentos WHERE id IN (' + ids.map(() => '?').join(',') + ')', ids);
+    // 6. v0.8.20: Auditoria consolidada (1 linha resumo, NAO 1 por lancamento —
+    //    seria 63+ linhas e polui a tabela). O user pode ver os IDs especificos
+    //    via consulta direta se precisar.
+    db.run('INSERT INTO auditoria (entidade, entidade_id, acao, dados_json, criado_em) VALUES (?, ?, ?, ?, ?)',
+      ['lancamentos', contextoId, 'excluidosEmMassa', JSON.stringify({ quantidade: ids.length, ids }), agora]);
     db.run('COMMIT');
   } catch (e) {
     db.run('ROLLBACK');
