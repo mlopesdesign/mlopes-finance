@@ -22,3 +22,6 @@ resources/index.html
 resources/js/app.js
 resources/js/backend/ambiente.js
 # resources/ é gerado por build-resources.mjs; src/ é a fonte
+
+# Inno Setup temporario (usado pra buildar Setup.exe)
+.tools/
