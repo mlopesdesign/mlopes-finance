@@ -1,22 +1,22 @@
 # GRAPHIFY — Mapa técnico do MLopes Finance
 
-> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-14T06:00:47.532Z.
+> Gerado automaticamente por `node tools/graphify.mjs` em 2026-08-14T12:45:19.027Z.
 > Não editar manualmente. Fonte da verdade: `src/` e `tools/`.
 
 ## Resumo
 
 | Categoria | Quantidade |
 |---|---|
-| core | 12 |
-| tela | 7 |
+| core | 13 |
+| tela | 8 |
 | backend | 5 |
 | sql | 1 |
 | vendor | 0 |
-| tool | 4 |
+| tool | 8 |
 
-Total: 32 módulos.
+Total: 38 módulos.
 
-## core (12)
+## core (13)
 
 ### `src/js/backend/core/backup.js`
 
@@ -52,6 +52,14 @@ MLopes Finance — backend de configurações
 
 **Exports:** `getConfig`, `setConfig`, `getAllConfig`, `deleteConfig`, `resetConfig`
 
+### `src/js/backend/core/custosFixos.js`
+
+MLopes Finance — Custos Fixos (v0.10.0)
+
+**Exports:** `criarCustoFixo`, `listarCustosFixos`, `totalCustosFixosMes`, `resumoCustosFixosMes`, `gerarOcorrenciasMesAtual`, `alternarCustoFixo`, `excluirCustoFixo`
+
+**Imports:** criarLancamento, listarLancamentos ← `./lancamentos.js`; criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias, desativarRecorrencia, excluirRecorrencia ← `./recorrencias.js`
+
 ### `src/js/backend/core/financeiro.js`
 
 * Retorna saldos agregados do contexto: total receitas, despesas, contas, clientes, etc.
@@ -86,7 +94,7 @@ MLopes Finance — recorrencias
 
 MLopes Finance — Relatorios e balancete (Fase 6)
 
-**Exports:** `calcularPeriodo`, `balancete`, `comparativo`, `exportaCSV`
+**Exports:** `calcularPeriodo`, `balancete`, `comparativo`, `exportaCSV`, `gastosPorMes`, `topCategorias`, `topDespesas`, `gastosPorConta`, `faturasAVencer`, `variacaoMensal`, `alertas`, `exportarMovimentosCSV`
 
 **Imports:** validarData ← `./financeiro.js`
 
@@ -124,7 +132,7 @@ MLopes Finance — atualizacao online (parte PURA: sem DOM, sem Neutralino, sem 
 
 **Exports:** `criarApi`
 
-**Imports:** criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto, atualizarConta, atualizarCategoria, excluirContexto, excluirConta, excluirCategoria, saldoPorConta ← `./core/financeiro.js`; conciliarLancamento, criarLancamento, resumo, excluirLancamento, excluirTodosLancamentos, estornarLancamento, editarLancamento, listarLancamentos, listarLancamentosDetalhados, obterLancamento ← `./core/lancamentos.js`; getAllConfig, getConfig, setConfig, deleteConfig, resetConfig ← `./core/configuracoes.js`; criarBackup, radiografar, restaurarBackup, validarCiclo, resetarBanco ← `./core/backup.js`; criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento, excluirCliente, excluirFornecedor, excluirProjeto, excluirCentroCusto, excluirTag, desvincularTagLancamento ← `./core/cadastros.js`; criarTransferencia, listarTransferencias, excluirTransferencia ← `./core/transferencias.js`; registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa ← `./core/baixas.js`; criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias, excluirRecorrencia, desativarRecorrencia ← `./core/recorrencias.js`; criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura, atualizarCartao, excluirCartao, listarFaturasDetalhadas, listarLancamentosDaFatura, calcularCicloDaCompra, faturaAtualDoCartao ← `./core/cartoes.js`; criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao ← `./core/importacao.js`; balancete, comparativo, exportaCSV ← `./core/relatorios.js`; compararVersao ← `./core/update.js`; checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, listarReleases, pathTempInstalador ← `./update.js`; APP_VERSION ← `./ambiente.js`
+**Imports:** criarCategoria, criarConta, criarContexto, listarContextos, obterContexto, atualizarContexto, alternarContextoAtivo, resumoContexto, atualizarConta, atualizarCategoria, excluirContexto, excluirConta, excluirCategoria, saldoPorConta ← `./core/financeiro.js`; conciliarLancamento, criarLancamento, resumo, excluirLancamento, excluirTodosLancamentos, estornarLancamento, editarLancamento, listarLancamentos, listarLancamentosDetalhados, obterLancamento ← `./core/lancamentos.js`; getAllConfig, getConfig, setConfig, deleteConfig, resetConfig ← `./core/configuracoes.js`; criarBackup, radiografar, restaurarBackup, validarCiclo, resetarBanco ← `./core/backup.js`; criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, criarTag, listarTags, vincularTagLancamento, listarTagsDoLancamento, excluirCliente, excluirFornecedor, excluirProjeto, excluirCentroCusto, excluirTag, desvincularTagLancamento ← `./core/cadastros.js`; criarTransferencia, listarTransferencias, excluirTransferencia ← `./core/transferencias.js`; registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa ← `./core/baixas.js`; criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias, excluirRecorrencia, desativarRecorrencia ← `./core/recorrencias.js`; criarCustoFixo, listarCustosFixos, totalCustosFixosMes, resumoCustosFixosMes, gerarOcorrenciasMesAtual, alternarCustoFixo, excluirCustoFixo ← `./core/custosFixos.js`; criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura, atualizarCartao, excluirCartao, listarFaturasDetalhadas, listarLancamentosDaFatura, calcularCicloDaCompra, faturaAtualDoCartao ← `./core/cartoes.js`; criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao ← `./core/importacao.js`; balancete, comparativo, exportaCSV, gastosPorMes, topCategorias, topDespesas, gastosPorConta, faturasAVencer, variacaoMensal, alertas, exportarMovimentosCSV ← `./core/relatorios.js`; compararVersao ← `./core/update.js`; checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, listarReleases, pathTempInstalador ← `./update.js`; APP_VERSION ← `./ambiente.js`
 
 ### `src/js/backend/update.js`
 
@@ -134,7 +142,7 @@ MLopes Finance — atualizacao online (parte IMPURA: usa Neutralino + curl.exe).
 
 **Imports:** compararVersao, escolherAsset, renderizarMarkdownSimples ← `./core/update.js`
 
-## tela (7)
+## tela (8)
 
 ### `src/js/telas/cadastros-generico.js`
 
@@ -166,6 +174,14 @@ MLopes Finance — Tela de Contextos Financeiros (CRUD)
 
 **API calls:** `contextos:listar`, `contextos:resumo`, `contextos:alternarAtivo`, `contextos:excluir`, `contextos:obter`, `contextos:atualizar`, `contextos:criar`
 
+### `src/js/telas/custosFixos.js`
+
+MLopes Finance — Tela de Custos Fixos (v0.10.0)
+
+**Exports:** `renderCustosFixos`
+
+**API calls:** `contas:listar`, `categorias:listar`, `custosFixos:resumoMes`, `custosFixos:totalMes`, `custosFixos:gerarMesAtual`, `custosFixos:alternar`, `custosFixos:excluir`, `custosFixos:criar`
+
 ### `src/js/telas/faturas.js`
 
 MLopes Finance — Tela de Faturas de Cartao
@@ -190,7 +206,7 @@ MLopes Finance — Tela de Relatórios e Balancete (Fase 6)
 
 **API calls:** `relatorios:comparativo`, `relatorios:balancete`, `relatorios:exportarCSV`
 
-## tool (4)
+## tool (8)
 
 ### `tools/build-resources.mjs`
 
@@ -202,11 +218,31 @@ Imagens extras (logo, favicon) usadas no header
 
 **Imports:** spawnSync ← `node:child_process`
 
+### `tools/debug-cf.mjs`
+
+Debug: testar criarCustoFixo isolado
+
+**Imports:** fileURLToPath ← `node:url`; migrar ← `../src/js/backend/migracoes.js`; criarContexto, criarConta ← `../src/js/backend/core/financeiro.js`; criarCustoFixo, listarCustosFixos ← `../src/js/backend/core/custosFixos.js`
+
+### `tools/debug-cf2.mjs`
+
+**Imports:** fileURLToPath ← `node:url`; migrar ← `../src/js/backend/migracoes.js`; criarContexto, criarConta ← `../src/js/backend/core/financeiro.js`; criarCustoFixo, listarCustosFixos ← `../src/js/backend/core/custosFixos.js`
+
+### `tools/debug-cf3.mjs`
+
+**Imports:** fileURLToPath ← `node:url`; migrar ← `../src/js/backend/migracoes.js`; criarContexto, criarConta ← `../src/js/backend/core/financeiro.js`; criarCustoFixo, listarCustosFixos ← `../src/js/backend/core/custosFixos.js`
+
 ### `tools/debug-cols2.mjs`
 
 Debug: cria um banco via novoBanco e checa colunas de lancamentos
 
 **Imports:** fileURLToPath ← `node:url`; migrar ← `../src/js/backend/migracoes.js`
+
+### `tools/debug-ofx-nubank.mjs`
+
+Debug: testa o parser OFX atual no arquivo do Marcio
+
+**Imports:** parsearOFX ← `../src/js/backend/core/importacao.js`
 
 ### `tools/graphify.mjs`
 
