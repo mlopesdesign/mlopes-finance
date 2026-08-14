@@ -1,4 +1,4 @@
-## 0.11.4 — HOTFIX: labels de data PT-BR + rotas de atualização de cadastros
+## 0.11.4 — HOTFIX: labels de data PT-BR + rotas de atualização de cadastros + Setup.exe
 
 - **Sintoma 1**: tela "Editar projeto" mostrava label "Data inicio (YYYY-MM-DD)" e "Data fim (YYYY-MM-DD)" — esqueci de localizar pra PT-BR quando fiz a v0.10.1.
 - **Sintoma 2**: ao clicar "Salvar" em qualquer cadastro (Projeto, Centro de custo, Tag), aparecia toast "Erro: Canal nao autorizado: undefined". O `telas/cadastros-generico.js` mapeia `apiAtualizar` pra cada tipo, mas os 3 tipos (projetos, centros_custo, tags) não tinham `apiAtualizar` no MAPA.
@@ -8,6 +8,7 @@
   - Adicionada rota `projetos:atualizar` no servidor (função `atualizarProjeto` já existia em `core/cadastros.js`).
   - Criadas funções `atualizarCentroCusto` e `atualizarTag` em `core/cadastros.js` + rotas correspondentes no servidor.
   - Adicionado `apiAtualizar` no MAPA de `projetos`, `centros_custo` e `tags` no `telas/cadastros-generico.js`.
+- **Setup.exe buildado pela primeira vez desde v0.8.8** (estava 6+ meses pendente). User pediu pra algumas pessoas testarem. Baixei Inno Setup 7.1.0 x64 (14 MB) em `E:\Projetos\MLOPES FINANCE\.tools\innosetup7\`, rodei `ISCC.exe installer/MLopesFinance.iss` (silencioso, sem admin), gerei `MLopesFinance_Setup.exe` (15 MB), fiz upload na v0.11.4. Setup.exe tem atalho no Menu Iniciar + Desktop + "Adicionar/Remover Programas".
 - **Bump v0.11.3 → v0.11.4** (5 lugares via `Edit`).
 - **Lição aprendida (gravada pra nunca mais)**: smoke test RUNTIME (importar cada módulo) + grep por `apiAtualizar` em todos os tipos do MAPA antes de qualquer publish. Criei `tools/check-cadastro-mapa.mjs` que valida que todo tipo de cadastro tem TODOS os campos de API (listar/criar/atualizar/excluir).
 
