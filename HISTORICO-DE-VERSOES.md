@@ -1,3 +1,11 @@
+## 0.11.2 — HOTFIX: tela de Faturas não carregava (helper `fmtData` faltando)
+
+- **Sintoma**: ao clicar em "Faturas" na sidebar, aparecia erro `Uncaught ReferenceError: fmtData is not defined at http://127.0.0.1:55072/js/telas/faturas.js:67` e a tela ficava em branco.
+- **Causa**: a v0.9.0 introduziu a tela de Faturas chamando `fmtData(dataF)` e `fmtData(dataV)` (linhas 68-69), mas o helper `fmtData` NUNCA foi definido dentro do arquivo `telas/faturas.js`. Os outros helpers (`money`, `fmtMes`, `escapeHtml`) também não estavam lá. O user só percebeu agora porque (a) nunca tinha clicado em Faturas antes na v0.10.1 (a tela existia mas estava quebrada) e (b) na v0.11.0 eu não fiz smoke test de navegação.
+- **Correção**: adicionei `function money(c)`, `function fmtData(iso)`, `function fmtMes(iso)` no final de `src/js/telas/faturas.js` (igual `telas/parcelamentos.js` já tem). Zero alteração no layout ou comportamento da tela — só adiciona os 3 helpers locais.
+- **Lição aprendida (gravada pra nunca mais)**: SEMPRE fazer smoke test runtime (importar cada tela e tentar renderizar num banco vazio) ANTES de publicar. Bug antigo escondido por 3 versões. Criei `tools/smoke-telas-runtime.mjs` que faz isso automaticamente.
+- **Bump v0.11.1 → v0.11.2** (5 lugares, com `Edit` que preserva formatação).
+
 ## 0.11.1 — Detecção automática de parcelados a partir do extrato
 
 - **Motivação do user**: importou 7 OFX de cartão Nubank (jan-jul/2026) com várias compras parceladas no formato "Nome - Parcela N/M" (ex: "Amazon - Parcela 3/10"). O sistema tinha parcelamentos + UI completa na v0.11.0, mas **só cadastrava MANUALMENTE**. O user ficou puto: "pra fazer manual eu não preciso de um app, faria em uma planilha, eu quero automação". Gap real: faltava detectar automaticamente os parcelados que já tinham virado lançamentos.

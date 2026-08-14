@@ -226,3 +226,16 @@ function formPagarFatura(faturaId, ciclo, totalCentavos, pagoCentavos, contasBan
 function escapeHtml(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+function money(c) {
+  return (Number(c) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+function fmtData(iso) {
+  if (!iso || typeof iso !== 'string' || !iso.includes('-')) return iso || '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function fmtMes(iso) {
+  if (!iso || typeof iso !== 'string' || !iso.includes('-')) return iso || '';
+  const [y, m] = iso.split('-');
+  return `${m}/${y}`;
+}
