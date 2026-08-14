@@ -188,5 +188,33 @@ export function migrar(db) {
     db.run("INSERT OR REPLACE INTO meta (chave, valor) VALUES ('schema_version', '5')");
     destino = 5;
   }
+  if (destino < 6) {
+    // v0.9.0 — Tela de Cartoes. Adiciona:
+    //  - cartoes.conta_associada_id: aponta pra conta do tipo 'cartao' que esse
+    //    cartao representa (criada automaticamente pelo criarCartao)
+    //  - lancamentos.fatura_id: vincula o lancamento a uma fatura especifica
+    //  - lancamentos.cartao_id: atalho pro cartao (pra queries tipo "compras deste cartao")
+    // Todos NULLABLE: bancos antigos continuam funcionando, e o user preenche
+    // aos poucos conforme cria cartoes e faturas.
+    // E idempotente: so adiciona se nao existir.
+    const colsCartao = db.exec("PRAGMA table_info(cartoes)");
+    const temContaAssoc = colsCartao[0]?.values?.some((r) => r[1] === 'conta_associada_id');
+    if (!temContaAssoc) {
+      db.run("ALTER TABLE cartoes ADD COLUMN conta_associada_id INTEGER REFERENCES contas(id) ON DELETE SET NULL");
+    }
+    const colsLanc = db.exec("PRAGMA table_info(lancamentos)");
+    const temFaturaId = colsLanc[0]?.values?.some((r) => r[1] === 'fatura_id');
+    if (!temFaturaId) {
+      db.run("ALTER TABLE lancamentos ADD COLUMN fatura_id INTEGER REFERENCES faturas(id) ON DELETE SET NULL");
+      db.run("CREATE INDEX IF NOT EXISTS idx_lancamentos_fatura ON lancamentos(fatura_id)");
+    }
+    const temCartaoId = colsLanc[0]?.values?.some((r) => r[1] === 'cartao_id');
+    if (!temCartaoId) {
+      db.run("ALTER TABLE lancamentos ADD COLUMN cartao_id INTEGER REFERENCES cartoes(id) ON DELETE SET NULL");
+      db.run("CREATE INDEX IF NOT EXISTS idx_lancamentos_cartao ON lancamentos(cartao_id)");
+    }
+    db.run("INSERT OR REPLACE INTO meta (chave, valor) VALUES ('schema_version', '6')");
+    destino = 6;
+  }
   return destino;
 }

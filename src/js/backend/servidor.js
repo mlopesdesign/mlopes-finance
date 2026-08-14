@@ -6,7 +6,7 @@ import { criarCliente, listarClientes, atualizarCliente, criarFornecedor, listar
 import { criarTransferencia, listarTransferencias, excluirTransferencia } from './core/transferencias.js';
 import { registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa } from './core/baixas.js';
 import { criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias, excluirRecorrencia, desativarRecorrencia } from './core/recorrencias.js';
-import { criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura } from './core/cartoes.js';
+import { criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura, atualizarCartao, excluirCartao, listarFaturasDetalhadas, listarLancamentosDaFatura, calcularCicloDaCompra } from './core/cartoes.js';
 import { criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao } from './core/importacao.js';
 import { balancete, comparativo, exportaCSV } from './core/relatorios.js';
 import { compararVersao } from './core/update.js';
@@ -88,11 +88,16 @@ export function criarApi(db, persistir = () => {}) {
     'recorrencias:desativar': (d) => { const r = desativarRecorrencia(db, d.id); persistir(); return r; },
 
     // Cartoes e faturas
-    'cartoes:criar': (d) => { const id = criarCartao(db, d); persistir(); return id; },
+    'cartoes:criar': (d) => { const r = criarCartao(db, d); persistir(); return r; },
     'cartoes:listar': (d) => listarCartoes(db, d.contextoId),
+    'cartoes:atualizar': (d) => { const out = atualizarCartao(db, d.id, d); persistir(); return out; },
+    'cartoes:excluir': (d) => { const r = excluirCartao(db, d.id, { cascade: d.cascade === true }); persistir(); return r; },
     'faturas:abrir': (d) => { const id = abrirFatura(db, d); persistir(); return id; },
     'faturas:pagar': (d) => { const out = pagarFatura(db, d); persistir(); return out; },
     'faturas:listar': (d) => listarFaturas(db, d.cartaoId),
+    'faturas:listarDetalhadas': (d) => listarFaturasDetalhadas(db, d.cartaoId),
+    'faturas:listarLancamentos': (d) => listarLancamentosDaFatura(db, d.faturaId),
+    'faturas:calcularCiclo': (d) => calcularCicloDaCompra(db, d),
     'faturas:adicionarLancamento': (d) => { adicionarLancamentoNaFatura(db, d.faturaId, d.valorCentavos); persistir(); return true; },
 
     // Backup

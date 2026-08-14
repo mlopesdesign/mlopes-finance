@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   descricao TEXT NOT NULL,
   observacoes TEXT NOT NULL DEFAULT '',
   transferencia_id INTEGER REFERENCES transferencias(id),
+  cartao_id INTEGER REFERENCES cartoes(id) ON DELETE SET NULL,
+  fatura_id INTEGER REFERENCES faturas(id) ON DELETE SET NULL,
   status TEXT NOT NULL CHECK (status IN ('aberto','conciliado','estornado')),
   criado_em TEXT NOT NULL,
   atualizado_em TEXT
@@ -169,6 +171,7 @@ CREATE TABLE IF NOT EXISTS cartoes (
   dia_fechamento INTEGER NOT NULL CHECK (dia_fechamento BETWEEN 1 AND 31),
   dia_vencimento INTEGER NOT NULL CHECK (dia_vencimento BETWEEN 1 AND 31),
   conta_pagamento_id INTEGER REFERENCES contas(id),
+  conta_associada_id INTEGER REFERENCES contas(id) ON DELETE SET NULL,
   ativo INTEGER NOT NULL DEFAULT 1,
   criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   atualizado_em TEXT

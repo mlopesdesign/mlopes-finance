@@ -14,7 +14,7 @@ import { criarCliente, listarClientes, atualizarCliente, criarFornecedor, criarP
 import { criarTransferencia, listarTransferencias } from '../src/js/backend/core/transferencias.js';
 import { registrarBaixa, saldoEmAberto, listarBaixas } from '../src/js/backend/core/baixas.js';
 import { criarRecorrencia, gerarProximaOcorrencia } from '../src/js/backend/core/recorrencias.js';
-import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas } from '../src/js/backend/core/cartoes.js';
+import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas, atualizarCartao, excluirCartao, calcularCicloDaCompra, listarFaturasDetalhadas, listarLancamentosDaFatura } from '../src/js/backend/core/cartoes.js';
 import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, inferirNaturezaItem, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao } from '../src/js/backend/core/importacao.js';
 import { balancete, comparativo, exportaCSV, calcularPeriodo } from '../src/js/backend/core/relatorios.js';
 import { aplicarAtualizacao, pathCacheWebView2Async, invalidarCacheWebView2 } from '../src/js/backend/update.js';
@@ -217,8 +217,14 @@ test('cartões: cadastra, abre fatura, paga sem despesa duplicada', async () => 
   const db = await novoBanco();
   const contextoId = criarContexto(db, { nome: 'C' });
   const contaId = criarConta(db, { contextoId, nome: 'Conta pagto' });
-  const cartaoId = criarCartao(db, { contextoId, nome: 'Nubank', limiteCentavos: 500000, diaFechamento: 5, diaVencimento: 15, contaPagamentoId: contaId });
-  assert.ok(cartaoId > 0);
+  // v0.9.0: criarCartao agora cria tambem a conta associada (tipo 'cartao') e retorna { cartaoId, contaId }
+  const r = criarCartao(db, { contextoId, nome: 'Nubank', limiteCentavos: 500000, diaFechamento: 5, diaVencimento: 15, contaPagamentoId: contaId });
+  assert.ok(r.cartaoId > 0);
+  assert.ok(r.contaId > 0);
+  const cartaoId = r.cartaoId;
+  // A conta associada existe e e' tipo 'cartao'
+  const tipoContaAssoc = db.exec('SELECT tipo FROM contas WHERE id = ?', [r.contaId])[0]?.values?.[0]?.[0];
+  assert.equal(tipoContaAssoc, 'cartao');
   // Ciclo
   assert.equal(calcularCiclo('2026-08-04', 5), '2026-08');  // dia 4 < fechamento 5 → ciclo 08
   assert.equal(calcularCiclo('2026-08-10', 5), '2026-09');  // dia 10 >= 5 → próximo ciclo
@@ -232,6 +238,9 @@ test('cartões: cadastra, abre fatura, paga sem despesa duplicada', async () => 
   assert.equal(pg.valorPago, 100000);
   // Status não é 'paga' porque valor_total é 0 (sem despesa na fatura ainda)
   assert.equal(listarFaturas(db, cartaoId).length, 1);
+  // v0.9.0: o lancamento de pagamento foi marcado com fatura_id
+  const lancPagFatura = db.exec('SELECT fatura_id FROM lancamentos WHERE id = ?', [pg.lancamentoId])[0]?.values?.[0]?.[0];
+  assert.equal(lancPagFatura, faturaId);
 });
 
 test('migração v2 → head: aplica todas as migrações em banco v0.4.1 simulado', async () => {
@@ -250,9 +259,9 @@ test('migração v2 → head: aplica todas as migrações em banco v0.4.1 simula
            INSERT INTO configuracoes VALUES ('tema', 'dark', 'texto', CURRENT_TIMESTAMP);`);
   // Tabelas v3 NÃO devem existir ainda
   assert.throws(() => db.exec('SELECT * FROM clientes'));
-  // Roda migração cumulativa (v2 → v3 → v4 → v5)
+  // Roda migração cumulativa (v2 → v3 → v4 → v5 → v6)
   const v = migrar(db);
-  assert.equal(v, 5);
+  assert.equal(v, 6, 'migracao cumulativa foi ate v6 (v0.9.0)');
   // Agora tabelas v3 existem
   assert.equal(db.exec('SELECT COUNT(*) FROM clientes').length, 1);
   assert.equal(db.exec('SELECT COUNT(*) FROM transferencias').length, 1);
@@ -263,8 +272,14 @@ test('migração v2 → head: aplica todas as migrações em banco v0.4.1 simula
   assert.equal(db.exec('SELECT COUNT(*) FROM itens_importacao').length, 1);
   assert.equal(db.exec('SELECT COUNT(*) FROM anexos').length, 1);
   assert.equal(db.exec('SELECT COUNT(*) FROM conciliacoes').length, 1);
-  // schema_version foi pra 5
-  assert.equal(db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0].values[0][0], '5');
+  // v0.9.0: colunas novas em cartoes e lancamentos
+  const colsCartao = db.exec("PRAGMA table_info(cartoes)")[0].values.map(r => r[1]);
+  assert.ok(colsCartao.includes('conta_associada_id'), 'cartao.conta_associada_id existe (v0.9.0)');
+  const colsLanc = db.exec("PRAGMA table_info(lancamentos)")[0].values.map(r => r[1]);
+  assert.ok(colsLanc.includes('cartao_id'), 'lancamento.cartao_id existe (v0.9.0)');
+  assert.ok(colsLanc.includes('fatura_id'), 'lancamento.fatura_id existe (v0.9.0)');
+  // schema_version foi pra 6
+  assert.equal(db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0].values[0][0], '6');
   // Dados anteriores preservados (configuracoes tema)
   assert.equal(db.exec("SELECT valor FROM configuracoes WHERE chave = 'tema'")[0].values[0][0], 'dark');
 });
@@ -1272,7 +1287,7 @@ test('resetarBanco: e idempotente (rodar 2x da certo)', async () => {
 // --- listarLancamentosDetalhados (v0.8.16) ---
 // Bug historico: v0.8.15 trocou a query com JOINs por SELECT * e a UI renderLancamentos
 // quebrou (esperava 22 colunas, recebia 17). v0.8.16 reintroduz os JOINs.
-test('listarLancamentosDetalhados: retorna 22 colunas (17 lanc + 5 nomes)', async () => {
+test('listarLancamentosDetalhados: retorna 24 colunas (19 lanc + 5 nomes)', async () => {
   const db = await novoBanco();
   const cid = criarContexto(db, { nome: 'C' });
   const contaId = criarConta(db, { contextoId: cid, nome: 'Banco' });
@@ -1284,19 +1299,24 @@ test('listarLancamentosDetalhados: retorna 22 colunas (17 lanc + 5 nomes)', asyn
   const r = listarLancamentosDetalhados(db, cid);
   assert.equal(r.length, 1, '1 lancamento retornado');
   const row = r[0];
-  assert.equal(row.length, 22, 'deve ter 22 colunas (17 de lancamentos + 5 JOINs)');
-  // Conferir colunas de join
-  assert.equal(row[17], 'Banco', 'conta_nome na col 17');
-  assert.equal(row[18], 'Salario', 'categoria_nome na col 18');
-  assert.equal(row[19], 'Cli', 'cliente_nome na col 19');
-  assert.equal(row[20], 'Proj', 'projeto_nome na col 20');
-  assert.equal(row[21], 'CC', 'centro_custo_nome na col 21');
+  assert.equal(row.length, 24, 'deve ter 24 colunas (19 de lancamentos + 5 JOINs) — v0.9.0 adicionou cartao_id e fatura_id');
+  // Conferir colunas de join (v0.9.0: cartao_id e fatura_id foram adicionados em lancamentos,
+  // entao as colunas de JOIN foram pra 19, 20, 21, 22, 23)
+  assert.equal(row[19], 'Banco', 'conta_nome na col 19 (v0.9.0)');
+  assert.equal(row[20], 'Salario', 'categoria_nome na col 20 (v0.9.0)');
+  assert.equal(row[21], 'Cli', 'cliente_nome na col 21 (v0.9.0)');
+  assert.equal(row[22], 'Proj', 'projeto_nome na col 22 (v0.9.0)');
+  assert.equal(row[23], 'CC', 'centro_custo_nome na col 23 (v0.9.0)');
   // Conferir colunas de lancamentos
   assert.equal(row[0], lid, 'id na col 0');
   assert.equal(row[7], 'receita', 'natureza na col 7');
   assert.equal(row[8], 1000, 'valor_centavos na col 8');
   assert.equal(row[11], 'Test', 'descricao na col 11');
-  assert.equal(row[14], 'aberto', 'status na col 14');
+  // v0.9.0: cartao_id e fatura_id foram adicionados (col 14 e 15, depois de transferencia_id)
+  assert.equal(row[14], null, 'cartao_id na col 14 (sem cartao)');
+  assert.equal(row[15], null, 'fatura_id na col 15 (sem fatura)');
+  // status passou de 14 pra 16 (depois das 2 colunas novas)
+  assert.equal(row[16], 'aberto', 'status na col 16');
 });
 
 test('listarLancamentosDetalhados: exclui transferencias e estornados por padrao', async () => {
@@ -1595,4 +1615,175 @@ test('importacao: reciclarImportacao sem reciclaveis retorna ok com 0', async ()
   const out = reciclarImportacao(db, id);
   assert.equal(out.ok, true);
   assert.equal(out.reciclados, 0);
+});
+
+// --- v0.9.0: Tela de Cartoes ---
+
+test('cartoes: criarCartao cria cartao E conta associada tipo "cartao"', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaBancaria = criarConta(db, { contextoId: cid, nome: 'Banco do Brasil', tipo: 'bancaria' });
+  const r = criarCartao(db, { contextoId: cid, nome: 'Nubank', instituicao: 'Nu Pagamentos', limiteCentavos: 500000, diaFechamento: 5, diaVencimento: 15, contaPagamentoId: contaBancaria });
+  assert.ok(r.cartaoId > 0);
+  assert.ok(r.contaId > 0);
+  // Conta associada existe e e' tipo 'cartao'
+  const c = db.exec('SELECT nome, tipo FROM contas WHERE id = ?', [r.contaId])[0]?.values?.[0];
+  assert.equal(c[0], 'Nubank');
+  assert.equal(c[1], 'cartao');
+  // cartoes.conta_associada_id aponta pra conta
+  const ca = db.exec('SELECT conta_associada_id FROM cartoes WHERE id = ?', [r.cartaoId])[0]?.values?.[0]?.[0];
+  assert.equal(ca, r.contaId);
+});
+
+test('cartoes: excluirCartao sem cascade BLOQUEIA se tem faturas com lancamentos', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  const r = criarCartao(db, { contextoId: cid, nome: 'Nubank', limiteCentavos: 100000, diaFechamento: 5, diaVencimento: 15, contaPagamentoId: cb });
+  // Cria fatura + lancamento
+  const fatId = abrirFatura(db, { cartaoId: r.cartaoId, ciclo: '2026-08', dataFechamento: '2026-08-05', dataVencimento: '2026-08-15' });
+  criarLancamento(db, { contextoId: cid, contaId: r.contaId, natureza: 'despesa', valorCentavos: 5000, dataCompetencia: '2026-08-02', descricao: 'iFood' });
+  // Tenta excluir sem cascade → BLOQUEIA
+  const out = excluirCartao(db, r.cartaoId);
+  assert.equal(out.ok, false);
+  assert.equal(out.bloqueadoPor, 'faturas');
+  // Tenta com cascade → OK
+  const out2 = excluirCartao(db, r.cartaoId, { cascade: true });
+  assert.equal(out2.ok, true);
+  assert.equal(out2.cascade, true);
+  // Conta associada foi desativada (soft delete)
+  const ativo = db.exec('SELECT ativo FROM contas WHERE id = ?', [r.contaId])[0]?.values?.[0]?.[0];
+  assert.equal(ativo, 0, 'conta associada desativada (soft delete preserva historico)');
+});
+
+test('cartoes: criarLancamento em conta tipo cartao AUTO-VINCULA a fatura do ciclo', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  // Cartao: dia_fechamento=5, dia_vencimento=15
+  const r = criarCartao(db, { contextoId: cid, nome: 'Nubank', limiteCentavos: 100000, diaFechamento: 5, diaVencimento: 15, contaPagamentoId: cb });
+  // Compra dia 02/08: ANTES do fechamento (5) → ciclo = 2026-08
+  const lid1 = criarLancamento(db, { contextoId: cid, contaId: r.contaId, natureza: 'despesa', valorCentavos: 5000, dataCompetencia: '2026-08-02', descricao: 'iFood' });
+  const l1 = db.exec('SELECT cartao_id, fatura_id FROM lancamentos WHERE id = ?', [lid1])[0]?.values?.[0];
+  assert.equal(l1[0], r.cartaoId, 'cartao_id auto-setado');
+  assert.ok(l1[1] != null, 'fatura_id auto-setado');
+  const fat1 = db.exec('SELECT ciclo FROM faturas WHERE id = ?', [l1[1]])[0]?.values?.[0]?.[0];
+  assert.equal(fat1, '2026-08', 'compra em 02/08 → fatura 2026-08 (antes do fechamento)');
+  // Compra dia 10/08: DEPOIS do fechamento (5) → ciclo = 2026-09
+  const lid2 = criarLancamento(db, { contextoId: cid, contaId: r.contaId, natureza: 'despesa', valorCentavos: 3000, dataCompetencia: '2026-08-10', descricao: 'Uber' });
+  const l2 = db.exec('SELECT fatura_id FROM lancamentos WHERE id = ?', [lid2])[0]?.values?.[0]?.[0];
+  const fat2 = db.exec('SELECT ciclo FROM faturas WHERE id = ?', [l2])[0]?.values?.[0]?.[0];
+  assert.equal(fat2, '2026-09', 'compra em 10/08 → fatura 2026-09 (depois do fechamento)');
+});
+
+test('cartoes: criarLancamento em conta bancaria NAO vincula a fatura', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  // Lancamento em conta bancaria: sem cartao/fatura
+  const lid = criarLancamento(db, { contextoId: cid, contaId: cb, natureza: 'despesa', valorCentavos: 5000, dataCompetencia: '2026-08-10', descricao: 'x' });
+  const l = db.exec('SELECT cartao_id, fatura_id FROM lancamentos WHERE id = ?', [lid])[0]?.values?.[0];
+  assert.equal(l[0], null, 'conta bancaria: cartao_id NULL');
+  assert.equal(l[1], null, 'conta bancaria: fatura_id NULL');
+});
+
+test('cartoes: valor_total_centavos da fatura atualiza ao criar/excluir lancamento', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  const r = criarCartao(db, { contextoId: cid, nome: 'Nubank', limiteCentavos: 100000, diaFechamento: 5, diaVencimento: 15, contaPagamentoId: cb });
+  // 2 compras na mesma fatura
+  const l1 = criarLancamento(db, { contextoId: cid, contaId: r.contaId, natureza: 'despesa', valorCentavos: 5000, dataCompetencia: '2026-08-02', descricao: 'A' });
+  const l2 = criarLancamento(db, { contextoId: cid, contaId: r.contaId, natureza: 'despesa', valorCentavos: 3000, dataCompetencia: '2026-08-03', descricao: 'B' });
+  // Pega a fatura do l1 (mesma que l2)
+  const fatId = db.exec('SELECT fatura_id FROM lancamentos WHERE id = ?', [l1])[0]?.values?.[0]?.[0];
+  const total = db.exec('SELECT valor_total_centavos FROM faturas WHERE id = ?', [fatId])[0]?.values?.[0]?.[0];
+  assert.equal(total, 8000, 'fatura soma 5000 + 3000 = 8000');
+  // Exclui l2 → total = 5000
+  excluirLancamento(db, l2);
+  const total2 = db.exec('SELECT valor_total_centavos FROM faturas WHERE id = ?', [fatId])[0]?.values?.[0]?.[0];
+  assert.equal(total2, 5000, 'fatura recalcula para 5000 apos excluir l2');
+});
+
+test('cartoes: pagarFatura marca lancamento de pagamento com fatura_id', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  const r = criarCartao(db, { contextoId: cid, nome: 'Nubank', limiteCentavos: 100000, diaFechamento: 5, diaVencimento: 15, contaPagamentoId: cb });
+  const faturaId = abrirFatura(db, { cartaoId: r.cartaoId, ciclo: '2026-08', dataFechamento: '2026-08-05', dataVencimento: '2026-08-15' });
+  const pg = pagarFatura(db, { faturaId, contaPagamentoId: cb, valorCentavos: 100000, dataPagamento: '2026-08-15' });
+  const fat = db.exec('SELECT fatura_id FROM lancamentos WHERE id = ?', [pg.lancamentoId])[0]?.values?.[0]?.[0];
+  assert.equal(fat, faturaId, 'lancamento de pagamento tem fatura_id');
+  const statusFatura = db.exec('SELECT status FROM faturas WHERE id = ?', [faturaId])[0]?.values?.[0]?.[0];
+  assert.equal(statusFatura, 'paga', 'fatura marcada como paga (valor_pago >= valor_total)');
+});
+
+test('cartoes: listarFaturasDetalhadas retorna contagem e soma dos lancamentos', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  const r = criarCartao(db, { contextoId: cid, nome: 'Nubank', limiteCentavos: 100000, diaFechamento: 5, diaVencimento: 15, contaPagamentoId: cb });
+  // 2 compras na fatura 2026-08
+  criarLancamento(db, { contextoId: cid, contaId: r.contaId, natureza: 'despesa', valorCentavos: 5000, dataCompetencia: '2026-08-02', descricao: 'A' });
+  criarLancamento(db, { contextoId: cid, contaId: r.contaId, natureza: 'despesa', valorCentavos: 3000, dataCompetencia: '2026-08-03', descricao: 'B' });
+  const faturas = listarFaturasDetalhadas(db, r.cartaoId);
+  assert.equal(faturas.length, 1);
+  // Colunas: 0:id, 1:cartao_id, 2:ciclo, 3:data_fechamento, 4:data_vencimento, 5:valor_total,
+  //          6:valor_pago, 7:status, 8:criado_em, 9:atualizado_em, 10:qtd_lancamentos, 11:soma_lancamentos_centavos
+  assert.equal(faturas[0][10], 2, 'qtd_lancamentos = 2 (col 10)');
+  assert.equal(faturas[0][11], 8000, 'soma_lancamentos_centavos = 8000 (col 11)');
+});
+
+test('cartoes: listarLancamentosDaFatura retorna apenas os da fatura', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  const r = criarCartao(db, { contextoId: cid, nome: 'Nubank', limiteCentavos: 100000, diaFechamento: 5, diaVencimento: 15, contaPagamentoId: cb });
+  // 1 compra em 2026-08, 1 em 2026-09
+  criarLancamento(db, { contextoId: cid, contaId: r.contaId, natureza: 'despesa', valorCentavos: 5000, dataCompetencia: '2026-08-02', descricao: 'A' });
+  criarLancamento(db, { contextoId: cid, contaId: r.contaId, natureza: 'despesa', valorCentavos: 3000, dataCompetencia: '2026-08-10', descricao: 'B' });
+  const faturas = listarFaturasDetalhadas(db, r.cartaoId);
+  // col 2 = ciclo (YYYY-MM)
+  const fat1Id = faturas.find(f => f[2] === '2026-08')[0];
+  const fat2Id = faturas.find(f => f[2] === '2026-09')[0];
+  const lancs1 = listarLancamentosDaFatura(db, fat1Id);
+  const lancs2 = listarLancamentosDaFatura(db, fat2Id);
+  // Colunas: 0:id, 1:contexto_id, 2:conta_id, 3:categoria_id, 4:natureza, 5:valor_centavos,
+  //          6:data_competencia, 7:data_vencimento, 8:descricao, 9:observacoes, 10:status, ...
+  assert.equal(lancs1.length, 1, 'fatura 2026-08 tem 1 lancamento');
+  assert.equal(lancs1[0][5], 5000, 'valor do lancamento = 5000 (col 5)');
+  assert.equal(lancs2.length, 1, 'fatura 2026-09 tem 1 lancamento');
+  assert.equal(lancs2[0][5], 3000, 'valor do lancamento = 3000 (col 5)');
+});
+
+test('cartoes: atualizarCartao muda dados cadastrais', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  const r = criarCartao(db, { contextoId: cid, nome: 'Nubank', limiteCentavos: 100000, diaFechamento: 5, diaVencimento: 15, contaPagamentoId: cb });
+  atualizarCartao(db, r.cartaoId, { limiteCentavos: 200000, diaFechamento: 10 });
+  const c = db.exec('SELECT limite_centavos, dia_fechamento, dia_vencimento FROM cartoes WHERE id = ?', [r.cartaoId])[0]?.values?.[0];
+  assert.equal(c[0], 200000, 'limite atualizado');
+  assert.equal(c[1], 10, 'dia_fechamento atualizado');
+  assert.equal(c[2], 15, 'dia_vencimento preservado (nao veio no update)');
+});
+
+test('cartoes: calcularCicloDaCompra calcula ciclo e datas corretamente', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cb = criarConta(db, { contextoId: cid, nome: 'BB', tipo: 'bancaria' });
+  const r = criarCartao(db, { contextoId: cid, nome: 'Nubank', limiteCentavos: 100000, diaFechamento: 5, diaVencimento: 15, contaPagamentoId: cb });
+  // Compra 2026-08-02 (antes do fechamento 5) → ciclo 2026-08
+  const c1 = calcularCicloDaCompra(db, { cartaoId: r.cartaoId, dataCompra: '2026-08-02' });
+  assert.equal(c1.ciclo, '2026-08');
+  assert.equal(c1.dataFechamento, '2026-08-05');
+  assert.equal(c1.dataVencimento, '2026-09-15');
+  // Compra 2026-08-10 (depois do fechamento 5) → ciclo 2026-09
+  const c2 = calcularCicloDaCompra(db, { cartaoId: r.cartaoId, dataCompra: '2026-08-10' });
+  assert.equal(c2.ciclo, '2026-09');
+  assert.equal(c2.dataFechamento, '2026-09-05');
+  assert.equal(c2.dataVencimento, '2026-10-15');
+  // Compra em 31/12 (depois do fechamento) com virada de ano
+  const c3 = calcularCicloDaCompra(db, { cartaoId: r.cartaoId, dataCompra: '2026-12-31' });
+  assert.equal(c3.ciclo, '2027-01');
 });

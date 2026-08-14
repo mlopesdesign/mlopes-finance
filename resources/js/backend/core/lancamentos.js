@@ -1,14 +1,34 @@
 import { validarData, validarValorCentavos } from './financeiro.js';
+import { calcularCicloDaCompra, abrirFatura } from './cartoes.js';
 
 export function criarLancamento(db, input, agora = new Date().toISOString()) {
-  const { contextoId, contaId, categoriaId = null, clienteId = null, projetoId = null, centroCustoId = null, natureza, valorCentavos, dataCompetencia, descricao, observacoes = '' } = input;
+  let { contextoId, contaId, categoriaId = null, clienteId = null, projetoId = null, centroCustoId = null, natureza, valorCentavos, dataCompetencia, descricao, observacoes = '', cartaoId = null, faturaId = null } = input;
   if (!Number.isInteger(contextoId) || !Number.isInteger(contaId)) throw new Error('Contexto e conta são obrigatórios.');
   if (!['receita', 'despesa'].includes(natureza)) throw new Error('Natureza deve ser receita ou despesa.');
   validarValorCentavos(valorCentavos); validarData(dataCompetencia);
   if (!descricao?.trim()) throw new Error('Descrição é obrigatória.');
-  db.run(`INSERT INTO lancamentos (contexto_id, conta_id, categoria_id, cliente_id, projeto_id, centro_custo_id, natureza, valor_centavos, data_competencia, descricao, observacoes, status, criado_em)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aberto', ?)`, [contextoId, contaId, categoriaId, clienteId, projetoId, centroCustoId, natureza, valorCentavos, dataCompetencia, descricao.trim(), observacoes.trim(), agora]);
+  // v0.9.0: se a conta e' tipo 'cartao' e o user NAO passou cartaoId/faturaId
+  // explicitamente, auto-descobrir o cartao via cartoes.conta_associada_id e
+  // abrir/vincular a fatura do ciclo. Isso faz com que toda compra no cartao
+  // caia na fatura certa, sem o user ter que pensar nisso.
+  if (faturaId == null && cartaoId == null) {
+    const tipoConta = db.exec('SELECT tipo FROM contas WHERE id = ?', [contaId])[0]?.values?.[0]?.[0];
+    if (tipoConta === 'cartao') {
+      const cart = db.exec('SELECT id FROM cartoes WHERE conta_associada_id = ? AND ativo = 1', [contaId])[0]?.values?.[0];
+      if (cart) {
+        cartaoId = Number(cart[0]);
+        const { ciclo, dataFechamento, dataVencimento } = calcularCicloDaCompra(db, { cartaoId, dataCompra: dataCompetencia });
+        faturaId = abrirFatura(db, { cartaoId, ciclo, dataFechamento, dataVencimento });
+      }
+    }
+  }
+  db.run(`INSERT INTO lancamentos (contexto_id, conta_id, categoria_id, cliente_id, projeto_id, centro_custo_id, natureza, valor_centavos, data_competencia, descricao, observacoes, cartao_id, fatura_id, status, criado_em)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aberto', ?)`, [contextoId, contaId, categoriaId, clienteId, projetoId, centroCustoId, natureza, valorCentavos, dataCompetencia, descricao.trim(), observacoes.trim(), cartaoId, faturaId, agora]);
   const id = db.exec('SELECT last_insert_rowid() AS id')[0].values[0][0];
+  // v0.9.0: atualiza valor_total_centavos da fatura (soma os lancamentos vinculados)
+  if (faturaId != null) {
+    db.run('UPDATE faturas SET valor_total_centavos = (SELECT COALESCE(SUM(valor_centavos), 0) FROM lancamentos WHERE fatura_id = ? AND status != \'estornado\') WHERE id = ?', [faturaId, faturaId]);
+  }
   db.run('INSERT INTO auditoria (entidade, entidade_id, acao, dados_json, criado_em) VALUES (?, ?, ?, ?, ?)', ['lancamentos', id, 'criado', JSON.stringify(input), agora]);
   return id;
 }
@@ -36,9 +56,9 @@ export function resumo(db, contextoId) {
 
 export function excluirLancamento(db, id, agora = new Date().toISOString()) {
   if (!Number.isInteger(id)) throw new Error('id obrigatorio.');
-  const r = db.exec('SELECT id, status, transferencia_id FROM lancamentos WHERE id = ?', [id])[0]?.values?.[0];
+  const r = db.exec('SELECT id, status, transferencia_id, fatura_id, valor_centavos FROM lancamentos WHERE id = ?', [id])[0]?.values?.[0];
   if (!r) throw new Error('Lancamento nao encontrado.');
-  const [_, status, transferenciaId] = r;
+  const [_, status, transferenciaId, faturaId, valorCentavos] = r;
   if (status === 'conciliado') {
     throw new Error('Lancamento conciliado nao pode ser excluido. Use estornar (cria lancamento inverso).');
   }
@@ -55,11 +75,16 @@ export function excluirLancamento(db, id, agora = new Date().toISOString()) {
     // itens_importacao.lancamento_id -> NULL
     db.run('UPDATE itens_importacao SET lancamento_id = NULL, status = ? WHERE lancamento_id = ?', ['ignorado', id]);
     // Anexos: FK com ON DELETE SET NULL ja cuida
+    // lancamento_tags tem cascade
+    db.run('DELETE FROM lancamentos WHERE id = ?', [id]);
+    // v0.9.0: recalcula valor_total_centavos da fatura APOS excluir o lancamento
+    // (a query precisa rodar DEPOIS do DELETE pra nao contar o proprio lancamento)
+    if (faturaId != null) {
+      db.run('UPDATE faturas SET valor_total_centavos = (SELECT COALESCE(SUM(valor_centavos), 0) FROM lancamentos WHERE fatura_id = ? AND status != \'estornado\') WHERE id = ?', [faturaId, faturaId]);
+    }
     // Auditoria: mantem registro
     db.run('INSERT INTO auditoria (entidade, entidade_id, acao, dados_json, criado_em) VALUES (?, ?, ?, ?, ?)',
       ['lancamentos', id, 'excluido', JSON.stringify({}), agora]);
-    // lancamento_tags tem cascade
-    db.run('DELETE FROM lancamentos WHERE id = ?', [id]);
     db.run('COMMIT');
   } catch (e) {
     db.run('ROLLBACK');
@@ -174,6 +199,8 @@ export function excluirTodosLancamentos(db, contextoId, agora = new Date().toISO
   // Coleta IDs antes (pq o DELETE cascata pode bagunçar a contagem)
   const ids = db.exec('SELECT id FROM lancamentos WHERE contexto_id = ?', [contextoId])[0]?.values?.map(r => r[0]) ?? [];
   if (!ids.length) return { ok: true, excluidos: 0 };
+  // v0.9.0: coleta faturas afetadas pra recalcular valor_total_centavos
+  const faturasAfetadas = db.exec('SELECT DISTINCT fatura_id FROM lancamentos WHERE contexto_id = ? AND fatura_id IS NOT NULL', [contextoId])[0]?.values?.map(r => r[0]) ?? [];
   db.run('BEGIN');
   try {
     // 1. Limpar transferencia_id dos lancamentos deste contexto PRIMEIRO
@@ -188,7 +215,11 @@ export function excluirTodosLancamentos(db, contextoId, agora = new Date().toISO
     db.run('DELETE FROM baixas WHERE lancamento_id IN (' + ids.map(() => '?').join(',') + ')', ids);
     // 5. Excluir lancamentos (cascade: lancamento_tags via FK ON DELETE CASCADE)
     db.run('DELETE FROM lancamentos WHERE id IN (' + ids.map(() => '?').join(',') + ')', ids);
-    // 6. v0.8.20: Auditoria consolidada (1 linha resumo, NAO 1 por lancamento —
+    // 6. v0.9.0: recalcula valor_total_centavos das faturas afetadas
+    for (const faturaId of faturasAfetadas) {
+      db.run('UPDATE faturas SET valor_total_centavos = (SELECT COALESCE(SUM(valor_centavos), 0) FROM lancamentos WHERE fatura_id = ? AND status != \'estornado\') WHERE id = ?', [faturaId, faturaId]);
+    }
+    // 7. v0.8.20: Auditoria consolidada (1 linha resumo, NAO 1 por lancamento —
     //    seria 63+ linhas e polui a tabela). O user pode ver os IDs especificos
     //    via consulta direta se precisar.
     db.run('INSERT INTO auditoria (entidade, entidade_id, acao, dados_json, criado_em) VALUES (?, ?, ?, ?, ?)',

@@ -7,9 +7,11 @@ import { renderCadastroGenerico } from './telas/cadastros-generico.js';
 import { renderImportacao } from './telas/importacao.js';
 import { renderRelatorios } from './telas/relatorios.js';
 import { renderContextos } from './telas/contextos.js';
+import { renderCartoes } from './telas/cartoes.js';
+import { renderFaturas } from './telas/faturas.js';
 import * as updUI from './update.js';
 
-const APP_VERSION = '0.8.20';
+const APP_VERSION = '0.9.0';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = []; let appDbPath = '';
 const $ = (s) => document.querySelector(s); const app = $('#app');
@@ -200,6 +202,13 @@ function render(view) {
   if (view === 'baixas') return renderBaixas();
   if (view === 'relatorios') return renderRelatorios(contextoId, api);
   if (view === 'importacao') return renderImportacao(contextoId, api);
+  if (view === 'cartoes') return renderCartoes(contextoId, api);
+  if (view === 'faturas') {
+    const faturasBtn = document.querySelector('.nav-button[data-view="faturas"]');
+    const filtro = faturasBtn?.dataset?.cartaoFiltro ? Number(faturasBtn.dataset.cartaoFiltro) : null;
+    if (faturasBtn) delete faturasBtn.dataset.cartaoFiltro;
+    return renderFaturas(contextoId, api, filtro);
+  }
   if (view === 'contextos') return renderContextos(contextoId, api, (novoId) => trocarContextoAtivo(novoId, api));
   if (view === 'configuracoes') return renderConfiguracoes(contextoId, api, appDbPath);
   return renderDashboard();
