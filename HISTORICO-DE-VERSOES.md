@@ -1,6 +1,25 @@
-## 0.9.1 — Tela de Cartões e Faturas
+## 0.9.1 — Dashboard separado por conta + cartão
 
-- **Motivação do user**: "senti falta do cartão de credito, ele é muito importante pra eu controlar meus gastos e fazer previsões de parcelamento". O backend (tabelas `cartoes` + `faturas` + 7 funções em `core/cartoes.js`) já existia desde a v0.6.0 mas nunca teve UI. O user só conseguia cadastrar cartão via SQL, então a feature era invisível. Agora v0.9.1 entrega as 2 telas + toda a infra de vinculação automática.
+- **Motivação do user**: "visão geral tem que separar as contas e constar o cartão tb". O dashboard antigo era só 4 cards (Receitas/Despesas/Saldo/qtdContas) + 4 cards auxiliares. Não separava por conta nem mostrava cartão de crédito.
+- **`renderDashboard()` reescrito do zero** (`src/js/app.js`). Novo layout:
+  - Top: 4 cards de resumo do período (Receitas, Despesas, Saldo, Lançamentos) — manter.
+  - **Bloco "💰 Suas contas"**: tabela com cada conta bancária/investimento (nome, tipo, saldo inicial, qtd de lançamentos, saldo atual). Linha de total no fim (só aparece se tem mais de 1 conta). Botão "Gerenciar contas" que navega direto pra tela de Contas. Esconde contas tipo 'cartao' (o saldo delas confunde — vai no bloco de cartões).
+  - **Bloco "💳 Cartões de crédito"**: card por cartão com nome + instituição, disponível (limite - total), limite, barra de progresso de uso (verde <50%, amarelo 50-80%, vermelho >80%), "fecha dia X · vence dia Y", e fatura atual detalhada (ciclo, total, pago, restante, vencimento, status). Se o cartão não tem fatura aberta no ciclo atual, mostra "Sem fatura aberta este mês". Botão "Gerenciar cartões" pra navegar.
+  - Bottom: 4 cards de cadastros auxiliares (Clientes, Projetos, Centros de custo, Tags) — manter.
+- **CSS novo** (`src/css/app.css`): `.cartao-dashboard` (card customizado com min-width 260px) e `.cartao-progress` / `.cartao-progress-bar` (barra horizontal de uso com cor dinâmica).
+- **Novas funções backend** em `core/financeiro.js`:
+  - `saldoPorConta(db, contextoId)` — retorna `[{id, nome, tipo, saldoInicialCentavos, saldoAtualCentavos, qtdLancamentos}]` com lógica contábil correta (receita=+, despesa=-, transferências se auto-anulam 1 receita + 1 despesa, estornados ignorados). Query única com LEFT JOIN.
+- **Nova função backend** em `core/cartoes.js`:
+  - `faturaAtualDoCartao(db, cartaoId)` — retorna a fatura do ciclo atual (ou próxima) do cartão, com totais e status. Se não tem fatura aberta, retorna a última fechada (histórico).
+- **Novas rotas servidor** (`servidor.js`): `dashboard:saldoPorConta`, `dashboard:faturaAtual`.
+- **Bug fix em `estornarLancamento`**: antes o estorno criava 1 lançamento de natureza oposta COM status='aberto' (contava no saldo, inflava o saldo). Agora cria o inverso com status='estornado' direto, e o original também vai pra 'estornado'. Os 2 somem do cálculo de saldo, mantendo o número correto. `criarLancamento` agora aceita parâmetro `status` (default 'aberto', 'estornado' usado internamente pelo estornarLancamento).
+- **4 testes novos** (105/105 verde): `saldoPorConta` soma corretamente, transfere entre contas (orig -X, dest +X, total consistente), ignora estornados; `faturaAtualDoCartao` retorna fatura aberta/fechada mais próxima. 1 teste atualizado: `listarLancamentos` espera 2 itens (não 3) após estornar, porque o inverso também fica 'estornado'.
+- **Bump v0.9.0 → v0.9.1** (6 lugares). Bundle 6.05 MB, SHA `3CB73C49…8C9`. Auto-update já programado.
+- **Motivação do user** (gravado pra nunca repetir): dashboards genéricos que mostram "saldo total" sem separar por origem confundem. User quer ver CADA conta e CADA cartão separadamente, com saldo próprio. Sempre que criar dashboard, listar contas/cartões com saldos individuais + barra de progresso de uso de cartão.
+
+## 0.9.0 — Tela de Cartões e Faturas
+
+- **Motivação do user**: "senti falta do cartão de credito, ele é muito importante pra eu controlar meus gastos e fazer previsões de parcelamento". O backend (tabelas `cartoes` + `faturas` + 7 funções em `core/cartoes.js`) já existia desde a v0.6.0 mas nunca teve UI. O user só conseguia cadastrar cartão via SQL, então a feature era invisível. Agora v0.9.0 entrega as 2 telas + toda a infra de vinculação automática.
 - **Migração v5 → v6** (`migracoes.js`): adiciona 3 colunas novas (todas nullable, idempotente):
   - `cartoes.conta_associada_id INTEGER REFERENCES contas(id) ON DELETE SET NULL` — a conta do tipo 'cartao' que o cartao "representa" (criada automaticamente pelo `criarCartao`).
   - `lancamentos.cartao_id INTEGER REFERENCES cartoes(id) ON DELETE SET NULL` — atalho pro cartao (queries tipo "compras deste cartao").
