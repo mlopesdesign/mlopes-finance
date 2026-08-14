@@ -9,6 +9,7 @@
   - Criadas funções `atualizarCentroCusto` e `atualizarTag` em `core/cadastros.js` + rotas correspondentes no servidor.
   - Adicionado `apiAtualizar` no MAPA de `projetos`, `centros_custo` e `tags` no `telas/cadastros-generico.js`.
 - **Setup.exe buildado pela primeira vez desde v0.8.8** (estava 6+ meses pendente). User pediu pra algumas pessoas testarem. Baixei Inno Setup 7.1.0 x64 (14 MB) em `E:\Projetos\MLOPES FINANCE\.tools\innosetup7\`, rodei `ISCC.exe installer/MLopesFinance.iss` (silencioso, sem admin), gerei `MLopesFinance_Setup.exe` (15 MB), fiz upload na v0.11.4. Setup.exe tem atalho no Menu Iniciar + Desktop + "Adicionar/Remover Programas".
+- **Decisão de distribuição (importante)**: User disse "não trabalho com portatil". Removido o `MLopesFinance-release.zip` (ZIP portátil) dos assets da v0.11.4. A partir de agora, **toda release só publica 2 assets: `MLopesFinance_Setup.exe` (instalador tradicional) + `resources.neu` (auto-update)**. ZIP portátil deixa de existir. Criado `tools/publish-release.ps1` que automatiza o publish consistente (sempre esses 2 assets, NUNCA ZIP).
 - **Bump v0.11.3 → v0.11.4** (5 lugares via `Edit`).
 - **Lição aprendida (gravada pra nunca mais)**: smoke test RUNTIME (importar cada módulo) + grep por `apiAtualizar` em todos os tipos do MAPA antes de qualquer publish. Criei `tools/check-cadastro-mapa.mjs` que valida que todo tipo de cadastro tem TODOS os campos de API (listar/criar/atualizar/excluir).
 
