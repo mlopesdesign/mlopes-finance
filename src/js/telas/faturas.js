@@ -34,6 +34,12 @@ export function renderFaturas(contextoId, api, cartaoFiltro = null) {
     <h1>Faturas <em>de cartão</em></h1>
     <p class="subtitle">Cada compra no cartão cai automaticamente na fatura do ciclo certo (calculado pelo dia de fechamento). Aqui você vê o resumo, paga e drill-down dos lançamentos.</p>
 
+    <div class="toolbar">
+      <div class="toolbar-group">
+        <button class="button ghost" id="sincronizar-baixas">🔄 Sincronizar baixas automáticas</button>
+      </div>
+    </div>
+
     <div class="panel">
       <h2>Selecionar cartão</h2>
       <div class="form-grid">
@@ -99,6 +105,31 @@ export function renderFaturas(contextoId, api, cartaoFiltro = null) {
         renderFaturas(_contextoId, _api, id);
       } else {
         renderFaturas(_contextoId, _api, null);
+      }
+    };
+  }
+  // v0.13.1: botao manual de sincronizar baixas automaticas
+  const btnSincronizar = document.getElementById('sincronizar-baixas');
+  if (btnSincronizar) {
+    btnSincronizar.onclick = () => {
+      btnSincronizar.disabled = true;
+      btnSincronizar.textContent = '⏳ Sincronizando...';
+      try {
+        const r = api('cartoes:sincronizarBaixasAutomaticas', { contextoId });
+        const total = r.processadas.length;
+        const jaPagas = r.jaPagas.length;
+        const erros = r.erros.length;
+        const msg = [];
+        if (total > 0) msg.push(`${total} fatura(s) paga(s)`);
+        if (jaPagas > 0) msg.push(`${jaPagas} ja estavam pagas`);
+        if (erros > 0) msg.push(`${erros} com erro`);
+        const texto = msg.length > 0 ? msg.join(', ') : 'Nenhuma fatura vencida.';
+        if (globalThis.toastOk) toastOk(texto);
+        renderFaturas(contextoId, api);
+      } catch (e) {
+        if (globalThis.toastErr) toastErr('Erro: ' + e.message);
+        btnSincronizar.disabled = false;
+        btnSincronizar.textContent = '🔄 Sincronizar baixas automáticas';
       }
     };
   }

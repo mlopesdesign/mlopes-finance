@@ -10,14 +10,14 @@ import { abrirBancoLocal } from '../src/js/backend/ambiente.js';
 import { getConfig, setConfig, getAllConfig, resetConfig } from '../src/js/backend/core/configuracoes.js';
 import { migrar } from '../src/js/backend/migracoes.js';
 import { criarBackup, radiografar, validarCiclo, restaurarBackup } from '../src/js/backend/core/backup.js';
-import { criarCliente, listarClientes, atualizarCliente, criarFornecedor, criarProjeto, criarCentroCusto, criarTag, vincularTagLancamento } from '../src/js/backend/core/cadastros.js';
+import { criarCliente, listarClientes, atualizarCliente, criarFornecedor, criarProjeto, listarProjetos, obterProjeto, criarCentroCusto, criarTag, vincularTagLancamento } from '../src/js/backend/core/cadastros.js';
 import { criarTransferencia, listarTransferencias } from '../src/js/backend/core/transferencias.js';
 import { registrarBaixa, saldoEmAberto, listarBaixas } from '../src/js/backend/core/baixas.js';
-import { criarRecorrencia, gerarProximaOcorrencia } from '../src/js/backend/core/recorrencias.js';
-import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas, atualizarCartao, excluirCartao, calcularCicloDaCompra, listarFaturasDetalhadas, listarLancamentosDaFatura, faturaAtualDoCartao } from '../src/js/backend/core/cartoes.js';
+import { criarRecorrencia, gerarProximaOcorrencia, normalizarNomeLancamento, classificarPeriodicidade, sugerirCategoria, detectarGastosRecorrentes, salvarGastosRecorrentesDetectados, listarGastosRecorrentes, obterGastoRecorrente, excluirGastoRecorrente, relatorioGastosRecorrentesMensal, relatorioGastosRecorrentesAnual, relatorioGastosRecorrentesPorCategoria } from '../src/js/backend/core/recorrencias.js';
+import { criarCartao, abrirFatura, pagarFatura, calcularCiclo, listarFaturas, atualizarCartao, excluirCartao, calcularCicloDaCompra, listarFaturasDetalhadas, listarLancamentosDaFatura, faturaAtualDoCartao, regularizarHistoricoCartoes, diasNoMes, pagarFaturasVencidasAutomaticamente } from '../src/js/backend/core/cartoes.js';
 import { criarCustoFixo, listarCustosFixos, totalCustosFixosMes, resumoCustosFixosMes, gerarOcorrenciasMesAtual, alternarCustoFixo, excluirCustoFixo } from '../src/js/backend/core/custosFixos.js';
 import { criarParcelamento, listarParcelamentos, listarParcelas, pagarParcela, excluirParcelamento, projecaoParcelasPorMes, resumoCompletoPorMes, calendarioCompletoParcelas, obterParcelamentoCompleto, detectarParcelamentosDoExtrato, criarParcelamentosDetectados } from '../src/js/backend/core/parcelamentos.js';
-import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, inferirNaturezaItem, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao } from '../src/js/backend/core/importacao.js';
+import { parsearOFX, parsearCSV, criarPreviaImportacao, confirmarImportacao, importarAutomaticamente, classificarCategoriaAutomatica, inferirNaturezaItem, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao } from '../src/js/backend/core/importacao.js';
 import { balancete, comparativo, exportaCSV, calcularPeriodo, gastosPorMes, topCategorias, topDespesas, gastosPorConta, faturasAVencer, variacaoMensal, alertas, exportarMovimentosCSV } from '../src/js/backend/core/relatorios.js';
 import { aplicarAtualizacao, pathCacheWebView2Async, invalidarCacheWebView2 } from '../src/js/backend/update.js';
 import { excluirContexto, excluirConta, excluirCategoria, saldoPorConta } from '../src/js/backend/core/financeiro.js';
@@ -45,7 +45,7 @@ test('núcleo cria contexto, conta, lançamento e resumo em centavos', async () 
   const contaId = criarConta(db, { contextoId, nome: 'Conta principal' });
   criarLancamento(db, { contextoId, contaId, natureza: 'receita', valorCentavos: 125000, dataCompetencia: '2026-08-11', descricao: 'Recebimento' });
   criarLancamento(db, { contextoId, contaId, natureza: 'despesa', valorCentavos: 30000, dataCompetencia: '2026-08-11', descricao: 'Despesa' });
-  assert.deepEqual(resumo(db, contextoId), { receitas: 125000, despesas: 30000, saldo: 95000 });
+  assert.deepEqual(resumo(db, contextoId), { receitas: 125000, despesas: 30000, lancamentos: 2, saldo: 95000 });
   assert.equal(conciliarLancamento(db, 1), true);
   assert.equal(db.exec("SELECT status FROM lancamentos WHERE id = 1")[0].values[0][0], 'conciliado');
 });
@@ -263,7 +263,7 @@ test('migração v2 → head: aplica todas as migrações em banco v0.4.1 simula
   assert.throws(() => db.exec('SELECT * FROM clientes'));
   // Roda migração cumulativa (v2 → v3 → v4 → v5 → v6 → v7)
   const v = migrar(db);
-  assert.equal(v, 7, 'migracao cumulativa foi ate v7 (v0.11.0)');
+  assert.equal(v, 10, 'migracao cumulativa foi ate v10 (v0.12.7)');
   // Agora tabelas v3 existem
   assert.equal(db.exec('SELECT COUNT(*) FROM clientes').length, 1);
   assert.equal(db.exec('SELECT COUNT(*) FROM transferencias').length, 1);
@@ -280,8 +280,8 @@ test('migração v2 → head: aplica todas as migrações em banco v0.4.1 simula
   const colsLanc = db.exec("PRAGMA table_info(lancamentos)")[0].values.map(r => r[1]);
   assert.ok(colsLanc.includes('cartao_id'), 'lancamento.cartao_id existe (v0.9.0)');
   assert.ok(colsLanc.includes('fatura_id'), 'lancamento.fatura_id existe (v0.9.0)');
-  // schema_version foi pra 7
-  assert.equal(db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0].values[0][0], '7');
+  // schema_version foi pra 8
+  assert.equal(db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0].values[0][0], '9');
   // Dados anteriores preservados (configuracoes tema)
   assert.equal(db.exec("SELECT valor FROM configuracoes WHERE chave = 'tema'")[0].values[0][0], 'dark');
 });
@@ -1400,6 +1400,31 @@ test('importacao: criarPreviaImportacao dedup dentro do arquivo (mesma transacao
   assert.equal(totais, 3, 'total_registros preserva o original (3 linhas do CSV)');
 });
 
+test('importacao: OFX dedup usa data, valor e descricao mesmo com FITID diferente', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const ofx = `OFXHEADER:100
+DATA:OFXSGML
+<STMTTRN>
+TRNTYPE:DEBIT
+DTPOSTED:20260115
+TRNAMT:-100.00
+FITID:ID-1
+NAME:COMPRA MERCADO
+</STMTTRN>
+<STMTTRN>
+TRNTYPE:DEBIT
+DTPOSTED:20260115
+TRNAMT:-100.00
+FITID:ID-2
+NAME:COMPRA MERCADO
+</STMTTRN>`;
+  const idImport = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'duplicado.ofx', formato: 'ofx', conteudo: ofx });
+  const itens = db.exec('SELECT data_transacao, valor_centavos, descricao FROM itens_importacao WHERE importacao_id = ?', [idImport])[0]?.values ?? [];
+  assert.equal(itens.length, 1);
+  assert.deepEqual(itens[0], ['2026-01-15', -10000, 'COMPRA MERCADO']);
+});
+
 test('importacao: criarPreviaImportacao nao falha com INSERT OR IGNORE em duplicata exata', async () => {
   const db = await novoBanco();
   const cid = criarContexto(db, { nome: 'C' });
@@ -2455,4 +2480,511 @@ test('parcelamentos: criarParcelamentosDetectados marca como paga se a FATURA vi
   assert.equal(p1[4], 'paga', 'parcela 1 marcada como paga (fatura 08 paga)');
   assert.equal(p2[4], 'paga', 'parcela 2 marcada como paga (fatura 09 paga)');
   assert.equal(p3[4], 'pendente', 'parcela 3 pendente (fatura 10 aberta)');
+});
+
+test('cartoes: regulariza historico vencido e deixa parcela futura pendente', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'Historico cartao' });
+  const conta = criarConta(db, { contextoId: cid, nome: 'Conta', tipo: 'bancaria' });
+  const cartao = criarCartao(db, { contextoId: cid, nome: 'Cartao', diaFechamento: 5, diaVencimento: 15, contaPagamentoId: conta });
+  criarLancamento(db, { contextoId: cid, contaId: cartao.contaId, natureza: 'despesa', valorCentavos: 10000, dataCompetencia: '2026-01-03', descricao: 'Compra antiga' });
+  criarLancamento(db, { contextoId: cid, contaId: cartao.contaId, natureza: 'despesa', valorCentavos: 20000, dataCompetencia: '2026-07-10', descricao: 'Compra atual' });
+  const antigos = db.exec("SELECT id FROM faturas WHERE cartao_id = ? AND ciclo = '2026-01'", [cartao.cartaoId])[0].values[0][0];
+  const futuros = db.exec("SELECT id FROM faturas WHERE cartao_id = ? AND ciclo = '2026-08'", [cartao.cartaoId])[0].values[0][0];
+  db.run("UPDATE faturas SET data_vencimento = '2026-02-15' WHERE id = ?", [antigos]);
+  db.run("UPDATE faturas SET data_vencimento = '2026-09-15' WHERE id = ?", [futuros]);
+  const r = regularizarHistoricoCartoes(db, { contextoId: cid, dataReferencia: '2026-08-15' });
+  assert.equal(r.faturasQuitadas, 1);
+  assert.equal(db.exec('SELECT status FROM faturas WHERE id = ?', [antigos])[0].values[0][0], 'paga');
+  assert.equal(db.exec('SELECT status FROM faturas WHERE id = ?', [futuros])[0].values[0][0], 'aberta');
+  const sts = db.exec('SELECT status FROM lancamentos WHERE conta_id = ? ORDER BY id', [cartao.contaId])[0].values.map(r => r[0]);
+  assert.deepEqual(sts, ['conciliado', 'aberto']);
+});
+
+test('importacao automatica: extrato importado nasce conciliado', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'Extrato conciliado' });
+  const conta = criarConta(db, { contextoId: cid, nome: 'Conta historico' });
+  const id = criarPreviaImportacao(db, { contextoId: cid, arquivoOrigem: 'historico.csv', formato: 'csv', conteudo: 'data,valor,descricao\n2026-01-10,-10,Compra\n' });
+  importarAutomaticamente(db, { importacaoId: id });
+  assert.equal(db.exec('SELECT status FROM lancamentos WHERE conta_id = ?', [conta])[0].values[0][0], 'conciliado');
+});
+
+test('importacao automatica: classifica categoria e processa conta unica sem confirmacao', async () => {
+  const db = await novoBanco();
+  const contextoId = criarContexto(db, { nome: 'Historico' });
+  const contaId = criarConta(db, { contextoId, nome: 'Conta historico' });
+  const csv = 'data,valor,descricao\n2025-01-10,-150.00,COMPRA SUPERMERCADO\n2025-01-11,5000.00,SALARIO\n';
+  const importacaoId = criarPreviaImportacao(db, { contextoId, arquivoOrigem: 'historico.csv', formato: 'csv', conteudo: csv });
+  const out = importarAutomaticamente(db, { importacaoId });
+  assert.equal(out.conta.id, contaId);
+  assert.equal(out.importados, 2);
+  assert.equal(out.inferencias.find((i) => i.natureza === 'despesa').categoria, 'Alimentação');
+  assert.equal(out.inferencias.find((i) => i.natureza === 'receita').categoria, 'Salário');
+  assert.equal(db.exec("SELECT status FROM importacoes WHERE id = ?", [importacaoId])[0].values[0][0], 'confirmada');
+  assert.equal(db.exec('SELECT COUNT(*) FROM lancamentos WHERE contexto_id = ?', [contextoId])[0].values[0][0], 2);
+});
+
+test('importacao automatica: extrato antigo cria parcelamento completo a partir da parcela 3/12', async () => {
+  const db = await novoBanco();
+  const contextoId = criarContexto(db, { nome: 'Historico cartao' });
+  const cartao = criarCartao(db, { contextoId, nome: 'Nubank', diaFechamento: 5, diaVencimento: 10 });
+  const csv = 'data,valor,descricao\n2026-03-10,-100.00,CELULAR XYZ - Parcela 3/12\n2026-04-10,-100.00,CELULAR XYZ - Parcela 4/12\n';
+  const importacaoId = criarPreviaImportacao(db, { contextoId, arquivoOrigem: 'nubank.csv', formato: 'csv', conteudo: csv });
+  const out = importarAutomaticamente(db, { importacaoId });
+  assert.equal(out.importados, 2);
+  assert.equal(out.parcelamentos.length, 1);
+  assert.equal(out.parcelamentos[0].ok, true);
+  const parcelamento = db.exec('SELECT descricao, valor_total_centavos, num_parcelas, data_primeira_parcela FROM parcelamentos WHERE contexto_id = ?', [contextoId])[0].values[0];
+  assert.deepEqual(parcelamento, ['CELULAR XYZ', 120000, 12, '2026-01-10']);
+  assert.equal(db.exec('SELECT COUNT(*) FROM parcelas WHERE parcelamento_id = (SELECT id FROM parcelamentos WHERE contexto_id = ?)', [contextoId])[0].values[0][0], 12);
+  assert.equal(db.exec('SELECT COUNT(*) FROM lancamentos WHERE cartao_id = ?', [cartao.cartaoId])[0].values[0][0], 2);
+});
+
+// === v0.12.3 — correcoes do auditor ===
+
+test('cadastro: listarProjetos faz JOIN com clientes e retorna cliente_nome (corrige bug do r[2] como cliente_id)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const clienteId = criarCliente(db, { contextoId: cid, nome: 'Empresa X' });
+  const projId = criarProjeto(db, { contextoId: cid, clienteId, nome: 'Projeto Alpha', descricao: 'Desc', dataInicio: '2026-01-01', dataFim: '2026-12-31' });
+  const rows = listarProjetos(db, cid);
+  assert.equal(rows.length, 1);
+  // Shape: [id, contexto_id, nome, cliente_id, cliente_nome, descricao, data_inicio, data_fim, ...]
+  assert.equal(rows[0][0], projId);
+  assert.equal(rows[0][2], 'Projeto Alpha'); // r[2] = nome (correto)
+  assert.equal(rows[0][3], clienteId);          // r[3] = cliente_id (id real)
+  assert.equal(rows[0][4], 'Empresa X');        // r[4] = cliente_nome (vindo do JOIN)
+  // obterProjeto retorna o shape completo (com cliente_id) para edicao
+  const full = obterProjeto(db, projId);
+  assert.equal(full[2], clienteId);             // full[2] = cliente_id (shape do SELECT *)
+});
+
+test('cadastro: listarProjetos retorna cliente_nome "—" quando projeto nao tem cliente', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  criarProjeto(db, { contextoId: cid, clienteId: null, nome: 'Projeto solto' });
+  const rows = listarProjetos(db, cid);
+  assert.equal(rows[0][4], '—'); // COALESCE garante string quando LEFT JOIN nao acha
+});
+
+// v0.12.4: REGRESSAO — listarClientes/listarFornecedores exigem contextoId.
+// O carregarSelectOptions do cadastros-generico precisa passar contextoId
+// ao inves de chamar api('clientes:listar', {}).
+test('cadastro: listarClientes e listarFornecedores exigem contextoId (regressao v0.12.3)', async () => {
+  const db = await novoBanco();
+  // Sem contextoId, listarClientes deve lancar
+  assert.throws(() => listarClientes(db, undefined), /Contexto obrigatorio/);
+  assert.throws(() => listarClientes(db, null), /Contexto obrigatorio/);
+  assert.throws(() => listarClientes(db, 'string'), /Contexto obrigatorio/);
+  // Com contextoId, deve funcionar
+  const cid = criarContexto(db, { nome: 'C' });
+  const list = listarClientes(db, cid);
+  assert.ok(Array.isArray(list));
+});
+
+test('cartoes: diasNoMes retorna o ultimo dia de cada mes corretamente', async () => {
+  assert.equal(diasNoMes(2026, 1), 31);  // jan
+  assert.equal(diasNoMes(2026, 2), 28);  // fev/2026 (nao bissexto)
+  assert.equal(diasNoMes(2024, 2), 29);  // fev/2024 (bissexto)
+  assert.equal(diasNoMes(2026, 4), 30);  // abr
+  assert.equal(diasNoMes(2026, 6), 30);  // jun
+  assert.equal(diasNoMes(2026, 9), 30);  // set
+  assert.equal(diasNoMes(2026, 11), 30); // nov
+  assert.equal(diasNoMes(2026, 12), 31); // dez
+});
+
+test('cartoes: calcularCicloDaCompra clampa dia 31 em meses curtos (abril, fev)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  // Cartao com dia_fechamento=31 e dia_vencimento=31
+  const cartao = criarCartao(db, { contextoId: cid, nome: 'Cartao 31', diaFechamento: 31, diaVencimento: 31 });
+  // Compra em 15/abril/2026: d(15) < diaFech(31) => ciclo = 2026-04
+  // data_fechamento esperada: 2026-04-30 (clamp), NAO 2026-04-31
+  const r1 = calcularCicloDaCompra(db, { cartaoId: cartao.cartaoId, dataCompra: '2026-04-15' });
+  assert.equal(r1.ciclo, '2026-04');
+  assert.equal(r1.dataFechamento, '2026-04-30'); // clamp: abril tem 30 dias
+  // data_vencimento: mes seguinte (maio) com dia 31 — maio tem 31, ok
+  assert.equal(r1.dataVencimento, '2026-05-31');
+  // Compra em 15/fevereiro/2026 (nao bissexto): d(15) < 31 => ciclo = 2026-02
+  const r2 = calcularCicloDaCompra(db, { cartaoId: cartao.cartaoId, dataCompra: '2026-02-15' });
+  assert.equal(r2.ciclo, '2026-02');
+  assert.equal(r2.dataFechamento, '2026-02-28'); // clamp: fev/2026 tem 28 dias
+});
+
+test('cartoes: calcularCicloDaCompra NAO clampa quando o dia existe no mes', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartao = criarCartao(db, { contextoId: cid, nome: 'Cartao 15', diaFechamento: 15, diaVencimento: 25 });
+  const r = calcularCicloDaCompra(db, { cartaoId: cartao.cartaoId, dataCompra: '2026-04-10' });
+  assert.equal(r.dataFechamento, '2026-04-15'); // sem clamp, dia 15 existe em abril
+  assert.equal(r.dataVencimento, '2026-05-25'); // sem clamp, dia 25 existe em maio
+});
+
+test('migracao v8: chama regularizarHistoricoCartoes (DRY) e idempotente', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartao = criarCartao(db, { contextoId: cid, nome: 'X', diaFechamento: 5, diaVencimento: 10 });
+  // Forca schema_version de volta pra 7 pra forcar a v8 a rodar
+  db.run("UPDATE meta SET valor = '7' WHERE chave = 'schema_version'");
+  migrar(db);
+  // Apos a migracao, schema_version deve ser 9 (v8 e v9 rodam, sao idempotentes)
+  const v = Number(db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0].values[0][0]);
+  assert.equal(v, 9);
+  // Rodar de novo nao deve quebrar (idempotente)
+  assert.doesNotThrow(() => migrar(db));
+  assert.equal(Number(db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0].values[0][0]), 9);
+});
+
+test('gastos recorrentes: estrutura basica da tabela + FK CASCADE', async () => {
+  // Smoke test que valida o schema v9 e a constraint FK CASCADE
+  // (gastos_recorrentes_lancamentos.gastos_recorrente_id -> gastos_recorrentes.id ON DELETE CASCADE)
+  const db = await novoBanco();
+  // Confirma que as tabelas existem
+  const t1 = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='gastos_recorrentes'")[0]?.values;
+  const t2 = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='gastos_recorrentes_lancamentos'")[0]?.values;
+  assert.equal(t1?.[0]?.[0], 'gastos_recorrentes');
+  assert.equal(t2?.[0]?.[0], 'gastos_recorrentes_lancamentos');
+});
+
+// === v0.12.3 — GASTOS RECORRENTES ===
+
+test('gastos recorrentes: normalizarNomeLancamento remove numeros, pontuacao, lowercase', () => {
+  assert.equal(normalizarNomeLancamento('UBER *TRIP 12:34'), 'uber trip');
+  assert.equal(normalizarNomeLancamento('Pagto Uber Brasil'), 'pagto uber brasil');
+  assert.equal(normalizarNomeLancamento('Netflix Mensalidade 09/2026'), 'netflix mensalidade');
+  assert.equal(normalizarNomeLancamento(''), '');
+  assert.equal(normalizarNomeLancamento(null), '');
+});
+
+test('gastos recorrentes: classificarPeriodicidade cobre todos os ranges', () => {
+  assert.equal(classificarPeriodicidade(7), 'semanal');
+  assert.equal(classificarPeriodicidade(15), 'quinzenal');
+  assert.equal(classificarPeriodicidade(30), 'mensal');
+  assert.equal(classificarPeriodicidade(60), 'bimestral');
+  assert.equal(classificarPeriodicidade(90), 'trimestral');
+  assert.equal(classificarPeriodicidade(180), 'semestral');
+  assert.equal(classificarPeriodicidade(365), 'anual');
+  assert.equal(classificarPeriodicidade(45), 'irregular'); // entre mensal e bimestral
+  assert.equal(classificarPeriodicidade(0), 'irregular');
+});
+
+test('gastos recorrentes: sugerirCategoria por keyword', () => {
+  assert.equal(sugerirCategoria('uber brasil'), 'Transporte / App');
+  assert.equal(sugerirCategoria('netflix mensalidade'), 'Assinatura / Streaming');
+  assert.equal(sugerirCategoria('adobe creative cloud'), 'Assinatura / Software');
+  assert.equal(sugerirCategoria('ifood pedido'), 'Delivery');
+  assert.equal(sugerirCategoria('cpfl energia'), 'Energia');
+  assert.equal(sugerirCategoria('pagto aleatorio sem categoria'), '');
+});
+
+test('gastos recorrentes: detectarGastosRecorrentes encontra 2+ ocorrencias do mesmo valor+nome', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  // 3x Uber de R$ 25,00 (2500 cents) em meses seguidos
+  for (const m of ['2026-01-15', '2026-02-15', '2026-03-15']) {
+    criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 2500, dataCompetencia: m, descricao: 'UBER *TRIP X' });
+  }
+  // 1x Aliexpress de R$ 80,00 (1 ocorrencia, NAO deve aparecer)
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 8000, dataCompetencia: '2026-02-10', descricao: 'Aliexpress compra' });
+  const candidatos = detectarGastosRecorrentes(db, cid, { minOcorrencias: 2 });
+  assert.equal(candidatos.length, 1);
+  assert.equal(candidatos[0].valorCentavos, 2500);
+  assert.equal(candidatos[0].ocorrencias, 3);
+  assert.equal(candidatos[0].periodicidade, 'mensal');
+  assert.equal(candidatos[0].categoriaSugerida, 'Transporte / App');
+});
+
+test('gastos recorrentes: detectar com minOcorrencias=2 ignora grupo com 1', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 5000, dataCompetencia: '2026-01-10', descricao: 'NETFLIX' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 5000, dataCompetencia: '2026-02-10', descricao: 'NETFLIX' });
+  const candidatos = detectarGastosRecorrentes(db, cid, { minOcorrencias: 3 }); // sobe o minimo
+  assert.equal(candidatos.length, 0);
+  const comMin2 = detectarGastosRecorrentes(db, cid, { minOcorrencias: 2 });
+  assert.equal(comMin2.length, 1);
+  assert.equal(comMin2[0].categoriaSugerida, 'Assinatura / Streaming');
+});
+
+test('gastos recorrentes: salvarGastosRecorrentesDetectados vincula e conta lancamentos', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  const ids = [];
+  for (const m of ['2026-01-15', '2026-02-15', '2026-03-15']) {
+    ids.push(criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 9900, dataCompetencia: m, descricao: 'Adobe Creative Cloud' }));
+  }
+  const candidatos = detectarGastosRecorrentes(db, cid, { minOcorrencias: 2 });
+  const r = salvarGastosRecorrentesDetectados(db, cid, candidatos);
+  assert.equal(r.salvos, 1);
+  // Verifica que os lancamentos foram vinculados
+  const list = listarGastosRecorrentes(db, cid);
+  assert.equal(list.length, 1);
+  // list[0] e array posicional: [id, contextoId, nomeExibicao, ..., ativo, qtd_vinculados]
+  // qtd_vinculados esta no indice 14
+  assert.equal(list[0][14], 3);
+});
+
+test('gastos recorrentes: salvar eh idempotente (NUNCA duplica o mesmo padrao)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  for (const m of ['2026-01-15', '2026-02-15']) {
+    criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 4990, dataCompetencia: m, descricao: 'Spotify Familia' });
+  }
+  const candidatos = detectarGastosRecorrentes(db, cid, { minOcorrencias: 2 });
+  const r1 = salvarGastosRecorrentesDetectados(db, cid, candidatos);
+  const r2 = salvarGastosRecorrentesDetectados(db, cid, candidatos);
+  assert.equal(r1.salvos, 1);
+  assert.equal(r2.salvos, 1); // atualiza, nao duplica
+  const list = listarGastosRecorrentes(db, cid);
+  assert.equal(list.length, 1);
+});
+
+test('gastos recorrentes: excluir com cascade=true apaga o padrao e os vinculos', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  for (const m of ['2026-01-15', '2026-02-15']) {
+    criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 1990, dataCompetencia: m, descricao: 'iFood' });
+  }
+  const candidatos = detectarGastosRecorrentes(db, cid, { minOcorrencias: 2 });
+  salvarGastosRecorrentesDetectados(db, cid, candidatos);
+  const rid = listarGastosRecorrentes(db, cid)[0][0];
+  const r = excluirGastoRecorrente(db, rid, { cascade: true });
+  assert.equal(r.ok, true);
+  assert.equal(listarGastosRecorrentes(db, cid).length, 0);
+});
+
+test('gastos recorrentes: relatorioMensal retorna 12 meses com estimado e real', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  for (const m of ['2026-01-15', '2026-02-15', '2026-03-15']) {
+    criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 10000, dataCompetencia: m, descricao: 'NETFLIX' });
+  }
+  const candidatos = detectarGastosRecorrentes(db, cid, { minOcorrencias: 2 });
+  salvarGastosRecorrentesDetectados(db, cid, candidatos);
+  const rel = relatorioGastosRecorrentesMensal(db, cid, { ano: 2026, mesInicio: '2026-01' });
+  assert.equal(rel.length, 12);
+  // Jan, Fev, Mar tem real (lancamentos reais)
+  const jan = rel.find((m) => m.mes === '2026-01');
+  assert.ok(jan.totalRealCentavos >= 10000);
+  // Meses futuros tem estimado
+  const dez = rel.find((m) => m.mes === '2026-12');
+  assert.ok(dez.totalEstimadoCentavos > 0);
+});
+
+test('gastos recorrentes: relatorioAnual retorna total, top 10 e variacao YoY', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  // 6 meses de Netflix (2025)
+  for (let m = 1; m <= 6; m++) {
+    criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 5500, dataCompetencia: `2025-${String(m).padStart(2, '0')}-15`, descricao: 'NETFLIX' });
+  }
+  // 3 meses de Adobe (2026)
+  for (let m = 1; m <= 3; m++) {
+    criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 12000, dataCompetencia: `2026-${String(m).padStart(2, '0')}-10`, descricao: 'ADOBE' });
+  }
+  // Detecta e salva em ambos os anos
+  const cand25 = detectarGastosRecorrentes(db, cid, { minOcorrencias: 2 });
+  salvarGastosRecorrentesDetectados(db, cid, cand25);
+  const rel2026 = relatorioGastosRecorrentesAnual(db, cid, { ano: 2026 });
+  assert.ok(rel2026.totalCentavos >= 36000); // 3 * 12000
+  assert.equal(rel2026.ano, 2026);
+  assert.equal(rel2026.anoAnterior, 2025);
+  assert.equal(rel2026.ranking.length >= 1, true);
+  // Top 1 deve ser Adobe (maior valor unitario + 2026)
+  assert.equal(rel2026.ranking[0].nome, 'ADOBE');
+});
+
+test('gastos recorrentes: relatorioPorCategoria agrupa por categoria com totais', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  for (const m of ['2026-01-15', '2026-02-15', '2026-03-15']) {
+    criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 2500, dataCompetencia: m, descricao: 'UBER *TRIP' });
+  }
+  for (const m of ['2026-01-10', '2026-02-10']) {
+    criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 9990, dataCompetencia: m, descricao: 'VIVO CELULAR' });
+  }
+  const candidatos = detectarGastosRecorrentes(db, cid, { minOcorrencias: 2 });
+  salvarGastosRecorrentesDetectados(db, cid, candidatos);
+  const rel = relatorioGastosRecorrentesPorCategoria(db, cid, { ano: 2026 });
+  assert.ok(rel.categorias.length >= 2);
+  assert.equal(rel.categorias[0].categoria, 'Telefonia / Internet');
+  assert.equal(rel.categorias[1].categoria, 'Transporte / App');
+  assert.equal(rel.total.qtdGastos, 2);
+  assert.equal(rel.total.valorMensalCentavos, 9990 + 2500);
+});
+
+test('gastos recorrentes: relatorioPorCategoria agrupa sem categoria como "Outros"', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  for (const m of ['2026-01-15', '2026-02-15']) {
+    criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 5000, dataCompetencia: m, descricao: 'BAR DO ZE' });
+  }
+  const candidatos = detectarGastosRecorrentes(db, cid, { minOcorrencias: 2 });
+  salvarGastosRecorrentesDetectados(db, cid, candidatos);
+  const rel = relatorioGastosRecorrentesPorCategoria(db, cid, { ano: 2026 });
+  assert.equal(rel.categorias[0].categoria, 'Outros');
+});
+
+// === v0.12.7 — PALAVRAS-CHAVE (busca controlada por keyword) ===
+
+test('palavras-chave: criar / listar / atualizar / excluir (soft + cascade)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const id = criarPalavraChave(db, { contextoId: cid, nome: 'Uber' });
+  assert.ok(Number.isInteger(id));
+  const list = listarPalavrasChave(db, cid);
+  assert.equal(list.length, 1);
+  assert.equal(list[0][2], 'Uber');
+  assert.throws(() => criarPalavraChave(db, { contextoId: cid, nome: 'Uber' }), /Ja existe/);
+  atualizarPalavraChave(db, id, { nome: 'Uber Brasil' });
+  assert.equal(listarPalavrasChave(db, cid)[0][2], 'Uber Brasil');
+  const r = excluirPalavraChave(db, id);
+  assert.equal(r.soft, true);
+  assert.equal(listarPalavrasChave(db, cid).length, 0);
+  // Cascade
+  const id2 = criarPalavraChave(db, { contextoId: cid, nome: 'Vivo' });
+  excluirPalavraChave(db, id2, { cascade: true });
+  const listAll = listarPalavrasChave(db, cid, { incluirInativas: true });
+  assert.equal(listAll.length, 1); // Uber ainda la (soft)
+});
+
+test('palavras-chave: rejeita nome invalido (curto, longo)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  assert.throws(() => criarPalavraChave(db, { contextoId: cid, nome: 'A' }), /pelo menos 2/);
+  assert.throws(() => criarPalavraChave(db, { contextoId: cid, nome: '' }), /pelo menos 2/);
+  assert.throws(() => criarPalavraChave(db, { contextoId: cid, nome: 'a'.repeat(51) }), /no maximo 50/);
+});
+
+test('palavras-chave: buscarLancamentosPorPalavra usa substring case-insensitive em despesa nao-estornada', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 2500, dataCompetencia: '2026-01-15', descricao: 'UBER *TRIP X' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 2500, dataCompetencia: '2026-02-15', descricao: 'uber brasil' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'receita', valorCentavos: 5000, dataCompetencia: '2026-02-10', descricao: 'uber cash' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 100, dataCompetencia: '2026-02-15', descricao: 'estornado' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 9999, dataCompetencia: '2026-02-15', descricao: 'sem match' });
+  const rows = buscarLancamentosPorPalavra(db, cid, 'uber');
+  assert.equal(rows.length, 2);
+  assert.equal(rows.reduce((s, r) => s + r[2], 0), 5000);
+});
+
+test('palavras-chave: comparativoAnualPorPalavra retorna variacao percentual', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  criarPalavraChave(db, { contextoId: cid, nome: 'Uber' });
+  criarPalavraChave(db, { contextoId: cid, nome: 'Vivo' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 2500, dataCompetencia: '2025-03-15', descricao: 'UBER TRIP' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 2500, dataCompetencia: '2026-01-15', descricao: 'UBER TRIP' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 2500, dataCompetencia: '2026-02-15', descricao: 'UBER TRIP' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 9990, dataCompetencia: '2026-03-10', descricao: 'VIVO CELULAR' });
+  const cmp = comparativoAnualPorPalavra(db, cid, { anoA: 2025, anoB: 2026 });
+  assert.equal(cmp.anoA, 2025);
+  assert.equal(cmp.anoB, 2026);
+  assert.equal(cmp.palavras.length, 2);
+  const uber = cmp.palavras.find((p) => p.nome === 'Uber');
+  assert.equal(uber.totalAnoACentavos, 2500);
+  assert.equal(uber.totalAnoBCentavos, 5000);
+  assert.equal(uber.variacaoPercentual, 100);
+  const vivo = cmp.palavras.find((p) => p.nome === 'Vivo');
+  assert.equal(vivo.variacaoPercentual, null); // 0 -> 9990 = "novo"
+});
+
+test('palavras-chave: ultimos12MesesPorPalavra retorna 12 meses com totais por mes', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaId = criarConta(db, { contextoId: cid, nome: 'Conta' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 1000, dataCompetencia: '2026-02-15', descricao: 'Adobe' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 1000, dataCompetencia: '2026-03-15', descricao: 'Adobe' });
+  criarLancamento(db, { contextoId: cid, contaId, natureza: 'despesa', valorCentavos: 1000, dataCompetencia: '2026-05-15', descricao: 'Adobe' });
+  const meses = ultimos12MesesPorPalavra(db, cid, 'Adobe');
+  assert.equal(meses.length, 12);
+  assert.equal(meses[11].isMesCorrente, true);
+  const comValor = meses.filter((m) => m.totalCentavos > 0);
+  assert.equal(comValor.length, 3);
+  assert.equal(comValor[0].mes, '2026-02');
+  assert.equal(comValor[0].totalCentavos, 1000);
+  assert.equal(comValor[0].qtdLancamentos, 1);
+});
+
+// === v0.13.0 — BAIXA AUTOMATICA DE FATURAS ===
+
+test('cartoes: pagarFaturasVencidasAutomaticamente paga faturas com vencimento <= dataRef', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaBancaria = criarConta(db, { contextoId: cid, nome: 'CC Principal', tipo: 'bancaria' });
+  const cartao = criarCartao(db, { contextoId: cid, nome: 'Visa', diaFechamento: 5, diaVencimento: 15, contaPagamentoId: contaBancaria });
+  // Fatura vencida (2025-01-15, 2 meses atras)
+  abrirFatura(db, { cartaoId: cartao.cartaoId, ciclo: '2025-01', dataFechamento: '2025-01-05', dataVencimento: '2025-01-15' });
+  db.run('UPDATE faturas SET valor_total_centavos = 50000 WHERE cartao_id = ? AND ciclo = ?', [cartao.cartaoId, '2025-01']);
+  // Fatura NAO vencida
+  abrirFatura(db, { cartaoId: cartao.cartaoId, ciclo: '2026-12', dataFechamento: '2026-12-05', dataVencimento: '2026-12-15' });
+  db.run('UPDATE faturas SET valor_total_centavos = 30000 WHERE cartao_id = ? AND ciclo = ?', [cartao.cartaoId, '2026-12']);
+  const r = pagarFaturasVencidasAutomaticamente(db, cid, { dataReferencia: '2026-08-20' });
+  assert.equal(r.processadas.length, 1);
+  assert.equal(r.processadas[0].valorCentavos, 50000);
+  assert.equal(r.processadas[0].lancamentoId, 1);
+  // Fatura foi marcada como paga
+  const status = db.exec('SELECT status FROM faturas WHERE id = ?', [r.processadas[0].faturaId])[0].values[0][0];
+  assert.equal(status, 'paga');
+  // Lancamento de saida foi criado na conta de pagamento
+  const lancs = db.exec('SELECT valor_centavos, fatura_id, natureza, status FROM lancamentos WHERE fatura_id = ?', [r.processadas[0].faturaId])[0]?.values ?? [];
+  assert.equal(lancs.length, 1);
+  assert.equal(Number(lancs[0][0]), 50000);
+  assert.equal(Number(lancs[0][1]), r.processadas[0].faturaId);
+  assert.equal(String(lancs[0][2]), 'despesa');
+  assert.equal(String(lancs[0][3]), 'conciliado');
+});
+
+test('cartoes: pagarFaturasVencidasAutomaticamente e IDEMPOTENTE (nao duplica)', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const contaBancaria = criarConta(db, { contextoId: cid, nome: 'CC', tipo: 'bancaria' });
+  const cartao = criarCartao(db, { contextoId: cid, nome: 'Visa', diaFechamento: 5, diaVencimento: 15, contaPagamentoId: contaBancaria });
+  abrirFatura(db, { cartaoId: cartao.cartaoId, ciclo: '2025-01', dataFechamento: '2025-01-05', dataVencimento: '2025-01-15' });
+  db.run('UPDATE faturas SET valor_total_centavos = 10000 WHERE cartao_id = ?', [cartao.cartaoId]);
+  const r1 = pagarFaturasVencidasAutomaticamente(db, cid, { dataReferencia: '2026-08-20' });
+  const r2 = pagarFaturasVencidasAutomaticamente(db, cid, { dataReferencia: '2026-08-20' });
+  assert.equal(r1.processadas.length, 1);
+  assert.equal(r2.processadas.length, 0);
+  assert.equal(r2.jaPagas.length, 1);
+  // So 1 lancamento criado
+  const qtd = Number(db.exec('SELECT COUNT(*) FROM lancamentos WHERE fatura_id IS NOT NULL')[0].values[0][0]);
+  assert.equal(qtd, 1);
+});
+
+test('cartoes: pagarFaturasVencidasAutomaticamente pula faturas sem conta de pagamento', async () => {
+  const db = await novoBanco();
+  const cid = criarContexto(db, { nome: 'C' });
+  const cartao = criarCartao(db, { contextoId: cid, nome: 'Visa', diaFechamento: 5, diaVencimento: 15 }); // sem contaPagamentoId
+  abrirFatura(db, { cartaoId: cartao.cartaoId, ciclo: '2025-01', dataFechamento: '2025-01-05', dataVencimento: '2025-01-15' });
+  db.run('UPDATE faturas SET valor_total_centavos = 10000 WHERE cartao_id = ?', [cartao.cartaoId]);
+  const r = pagarFaturasVencidasAutomaticamente(db, cid, { dataReferencia: '2026-08-20' });
+  assert.equal(r.processadas.length, 0);
+  assert.equal(r.erros.length, 1);
+  assert.match(r.erros[0].mensagem, /conta de pagamento/);
+});
+
+test('migracao v10: cria tabela palavras_chave e idempotente', async () => {
+  const db = await novoBanco();
+  db.run("UPDATE meta SET valor = '9' WHERE chave = 'schema_version'");
+  migrar(db);
+  const v = Number(db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0].values[0][0]);
+  assert.equal(v, 10);
+  const t = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='palavras_chave'")[0]?.values?.[0]?.[0];
+  assert.equal(t, 'palavras_chave');
+  assert.doesNotThrow(() => migrar(db));
+  assert.equal(Number(db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0].values[0][0]), 10);
 });

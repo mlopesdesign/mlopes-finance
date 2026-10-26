@@ -38,6 +38,32 @@ export function listarBaixas(db, lancamentoId) {
   return db.exec('SELECT * FROM baixas WHERE lancamento_id = ? ORDER BY data_baixa DESC, id DESC', [lancamentoId])[0]?.values ?? [];
 }
 
+/** Lista apenas compromissos que realmente admitem baixa manual. */
+export function listarLancamentosPendentesDeBaixa(db, contextoId, limite = 500) {
+  if (!Number.isInteger(contextoId)) return [];
+  return db.exec(`
+    SELECT l.*,
+           COALESCE(c.nome, '') AS conta_nome,
+           COALESCE(ca.nome, '') AS categoria_nome,
+           COALESCE(cl.nome, '') AS cliente_nome,
+           COALESCE(p.nome, '') AS projeto_nome,
+           COALESCE(cc.nome, '') AS centro_custo_nome
+    FROM lancamentos l
+    JOIN contas c ON c.id = l.conta_id
+    LEFT JOIN categorias ca ON ca.id = l.categoria_id
+    LEFT JOIN clientes cl ON cl.id = l.cliente_id
+    LEFT JOIN projetos p ON p.id = l.projeto_id
+    LEFT JOIN centros_custo cc ON cc.id = l.centro_custo_id
+    WHERE l.contexto_id = ? AND l.status = 'aberto'
+      AND c.tipo != 'cartao'
+      AND l.natureza IN ('receita', 'despesa')
+      AND l.transferencia_id IS NULL
+      AND l.valor_centavos > (SELECT COALESCE(SUM(b.valor_centavos), 0) FROM baixas b WHERE b.lancamento_id = l.id)
+    ORDER BY l.data_competencia DESC, l.id DESC
+    LIMIT ?
+  `, [contextoId, Number(limite)])[0]?.values ?? [];
+}
+
 export function removerBaixa(db, idBaixa, agora = new Date().toISOString()) {
   const r = db.exec('SELECT lancamento_id, valor_centavos FROM baixas WHERE id = ?', [idBaixa])[0]?.values?.[0];
   if (!r) throw new Error('Baixa nao encontrada.');

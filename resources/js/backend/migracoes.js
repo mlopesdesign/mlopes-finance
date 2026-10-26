@@ -1,3 +1,7 @@
+// v0.12.3: importa o helper de cartoes pra reaproveitar a logica de regularizacao
+// (resolve a duplicacao que existia entre a v8 e cartoes.js).
+import { regularizarHistoricoCartoes } from './core/cartoes.js';
+
 export function migrar(db) {
   db.run('CREATE TABLE IF NOT EXISTS meta (chave TEXT PRIMARY KEY, valor TEXT NOT NULL)');
   const current = db.exec("SELECT valor FROM meta WHERE chave = 'schema_version'")[0]?.values[0]?.[0] ?? '0';
@@ -259,6 +263,84 @@ export function migrar(db) {
     for (const sql of indicesV7) db.run(sql);
     db.run("INSERT OR REPLACE INTO meta (chave, valor) VALUES ('schema_version', '7')");
     destino = 7;
+  }
+  if (destino < 8) {
+    // v0.12.3: chama o helper reutilizavel (DRY com cartoes.js).
+    // v0.12.1 (original): Extrato importado representa movimento ja ocorrido. Corrige
+    // historico anterior que ficou aberto e reconstrucoes de parcelamentos antigas
+    // sem parcelas pagas. A regra e idempotente e preserva registros.
+    regularizarHistoricoCartoes(db, {});
+    db.run("INSERT OR REPLACE INTO meta (chave, valor) VALUES ('schema_version', '8')");
+    destino = 8;
+  }
+  if (destino < 9) {
+    // v0.12.3 — Gastos recorrentes detectados. Duas tabelas:
+    // - gastos_recorrentes: 1 registro por padrao detectado (Uber, 99, Adobe...).
+    //   periodicidade e' calculada a partir do intervalo medio entre ocorrencias.
+    //   categoria_sugerida vem de keyword-matching (Uber/99 -> Transporte, etc).
+    // - gastos_recorrentes_lancamentos: vinculo N:N com os lancamentos que compoem o padrao.
+    // ON DELETE CASCADE garante que, ao excluir um gasto recorrente, os vinculos
+    // sao removidos. Ao excluir um lancamento, o vinculo some (e o user pode
+    // re-rodar a deteccao pra recalcular).
+    const tabelasV9 = [
+      `CREATE TABLE IF NOT EXISTS gastos_recorrentes (
+        id INTEGER PRIMARY KEY,
+        contexto_id INTEGER NOT NULL REFERENCES contextos_financeiros(id),
+        nome_normalizado TEXT NOT NULL,
+        nome_exibicao TEXT NOT NULL,
+        valor_centavos INTEGER NOT NULL CHECK (valor_centavos > 0),
+        periodicidade TEXT NOT NULL CHECK (periodicidade IN ('semanal','quinzenal','mensal','bimestral','trimestral','semestral','anual','irregular')),
+        intervalo_medio_dias INTEGER NOT NULL,
+        data_primeira TEXT NOT NULL,
+        data_ultima TEXT NOT NULL,
+        ocorrencias INTEGER NOT NULL,
+        categoria_id INTEGER REFERENCES categorias(id) ON DELETE SET NULL,
+        conta_id INTEGER REFERENCES contas(id) ON DELETE SET NULL,
+        categoria_sugerida TEXT NOT NULL DEFAULT '',
+        ativo INTEGER NOT NULL DEFAULT 1,
+        criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        atualizado_em TEXT
+      )`,
+      `CREATE TABLE IF NOT EXISTS gastos_recorrentes_lancamentos (
+        gastos_recorrente_id INTEGER NOT NULL REFERENCES gastos_recorrentes(id) ON DELETE CASCADE,
+        lancamento_id INTEGER NOT NULL REFERENCES lancamentos(id) ON DELETE CASCADE,
+        PRIMARY KEY (gastos_recorrente_id, lancamento_id)
+      )`,
+    ];
+    for (const sql of tabelasV9) db.run(sql);
+    const indicesV9 = [
+      'CREATE INDEX IF NOT EXISTS idx_gastos_recorrentes_contexto ON gastos_recorrentes(contexto_id, ativo)',
+      'CREATE INDEX IF NOT EXISTS idx_gastos_recorrentes_lancamentos ON gastos_recorrentes_lancamentos(lancamento_id)',
+      'CREATE INDEX IF NOT EXISTS idx_gastos_recorrentes_lookup ON gastos_recorrentes(contexto_id, nome_normalizado, valor_centavos)',
+    ];
+    for (const sql of indicesV9) db.run(sql);
+    db.run("INSERT OR REPLACE INTO meta (chave, valor) VALUES ('schema_version', '9')");
+    destino = 9;
+  }
+  if (destino < 10) {
+    // v0.12.7 — Palavras-chave. Tela nova "Palavras-chave" (entre Recorrencias
+    // e Transferencias na sidebar). User cadastra palavras (Uber, Vivo, 99)
+    // e o sistema busca em todos os lancamentos de despesa (substring
+    // case-insensitive em descricao). Mostra totais da semana/mes/ano
+    // e comparativo entre anos (grafico de barras).
+    // UNIQUE(contexto_id, nome) impede duplicata.
+    const tabelasV10 = [
+      `CREATE TABLE IF NOT EXISTS palavras_chave (
+        id INTEGER PRIMARY KEY,
+        contexto_id INTEGER NOT NULL REFERENCES contextos_financeiros(id),
+        nome TEXT NOT NULL,
+        ativo INTEGER NOT NULL DEFAULT 1,
+        criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(contexto_id, nome)
+      )`,
+    ];
+    for (const sql of tabelasV10) db.run(sql);
+    const indicesV10 = [
+      'CREATE INDEX IF NOT EXISTS idx_palavras_chave_contexto ON palavras_chave(contexto_id, ativo)',
+    ];
+    for (const sql of indicesV10) db.run(sql);
+    db.run("INSERT OR REPLACE INTO meta (chave, valor) VALUES ('schema_version', '10')");
+    destino = 10;
   }
   return destino;
 }

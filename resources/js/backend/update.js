@@ -88,10 +88,12 @@ export async function invalidarCacheWebView2() {
 // Wrappers sincronos (pathTempInstalador/pathRecursoInstalado) para o caso
 // de testes/ambientes sem Neutralino. Em producao, use as versoes async.
 export function pathTempInstalador() {
-  return _appDirCache ? `${_appDirCache}\\resources.neu.tmp` : '%LOCALAPPDATA%\\Programs\\MLopes Finance\\resources.neu.tmp';
+  // Nunca devolve um placeholder de ambiente: o Neutralino filesystem recebe
+  // caminhos literais e nao expande %LOCALAPPDATA%.
+  return _appDirCache ? `${_appDirCache}\\resources.neu.tmp` : null;
 }
 export function pathRecursoInstalado() {
-  return _appDirCache ? `${_appDirCache}\\resources.neu` : '%LOCALAPPDATA%\\Programs\\MLopes Finance\\resources.neu';
+  return _appDirCache ? `${_appDirCache}\\resources.neu` : null;
 }
 
 // GET via curl.exe (secao 5.2 do PADRAO). Retorna o body como string.
@@ -190,7 +192,9 @@ export async function listarReleases({ owner = REPO_OWNER, repo = REPO_NAME, lim
 // Baixa o asset do GitHub para o path temporario. Retorna { caminho, size }.
 export async function baixarAtualizacao(assetUrl, destino = null) {
   if (!assetUrl) throw new Error('assetUrl obrigatorio');
-  const dest = destino || await pathTempInstaladorAsync();
+  // Compatibilidade com versões antigas que enviavam o placeholder literal.
+  const destinoValido = destino && !String(destino).includes('%LOCALAPPDATA%') ? destino : null;
+  const dest = destinoValido || await pathTempInstaladorAsync();
   return await curlDownload(assetUrl, dest);
 }
 
@@ -199,7 +203,8 @@ export async function baixarAtualizacao(assetUrl, destino = null) {
 // (a rota `update:aplicar` em servidor.js cuida disso, usando criarBackup).
 export async function aplicarAtualizacao(caminho = null) {
   if (!globalThis.Neutralino) throw new Error('Neutralino nao disponivel');
-  const caminhoFinal = caminho || await pathTempInstaladorAsync();
+  const caminhoValido = caminho && !String(caminho).includes('%LOCALAPPDATA%') ? caminho : null;
+  const caminhoFinal = caminhoValido || await pathTempInstaladorAsync();
   const recursoFinal = await pathRecursoInstaladoAsync();
   // Verifica que o arquivo existe e tem tamanho razoavel (> 1 KB).
   let stat;

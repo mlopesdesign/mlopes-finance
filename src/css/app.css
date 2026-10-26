@@ -110,6 +110,98 @@ h2 { margin-top: 0; font-size: 20px; color: var(--ink); }
   gap: 16px;
   margin-bottom: 24px;
 }
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.card-totais-palavra {
+  padding: 20px;
+}
+.card-totais-palavra .card-label { font-size: 14px; font-weight: 700; }
+.card-totais-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 14px 0 10px;
+}
+.card-totais-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 8px;
+  background: var(--bg-2);
+  border-radius: 6px;
+  min-width: 0;
+}
+.card-totais-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-totais-value { font-size: 15px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-totais-periodo { font-size: 9px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grafico-cmp { padding: 20px; margin-top: 16px; }
+.grafico-barras { width: 100%; }
+.grafico-linha { display: grid; grid-template-columns: 130px 1fr 90px; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.grafico-linha:last-child { border-bottom: none; }
+.grafico-nome { font-weight: 700; color: var(--ink); }
+.grafico-barras-area { display: flex; flex-direction: column; gap: 4px; }
+.grafico-barra { display: flex; align-items: center; gap: 8px; }
+.grafico-barra-label { font-size: 10px; color: var(--muted); min-width: 36px; }
+.grafico-barra-track { flex: 1; background: var(--bg-2); border-radius: 3px; height: 14px; overflow: hidden; }
+.grafico-barra-fill { height: 100%; transition: width 0.3s; }
+.grafico-barra-fill.ano-a { background: var(--muted); }
+.grafico-barra-fill.ano-b { background: var(--brand); }
+.grafico-barra-valor { font-size: 11px; color: var(--ink); min-width: 80px; }
+.grafico-variacao { text-align: right; font-size: 12px; font-weight: 700; }
+.grafico-variacao.up { color: var(--negative); }
+.grafico-variacao.down { color: var(--positive); }
+.grafico-variacao.mesmo { color: var(--muted); }
+.sparkline {
+  display: flex;
+  gap: 2px;
+  align-items: flex-end;
+  height: 36px;
+  margin-top: 4px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 2px;
+}
+.sparkline-bar {
+  flex: 1;
+  background: var(--brand);
+  border-radius: 1px 1px 0 0;
+  min-width: 4px;
+  transition: opacity 0.2s;
+}
+.sparkline-bar.corrente { background: var(--positive, #0f7); box-shadow: 0 0 0 1px var(--bg); }
+.sparkline-bar.vazio { background: var(--bg-2); opacity: 0.5; }
+.sparkline-labels {
+  display: flex;
+  gap: 2px;
+  margin-top: 4px;
+  font-size: 9px;
+  color: var(--muted);
+  text-align: center;
+}
+.sparkline-labels span { flex: 1; min-width: 0; }
+.sparkline-labels .corrente { color: var(--ink); font-weight: 700; }
+.card-sparkline { margin-top: 8px; }
+.sparkline-titulo { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.card-lancamentos-toggle { margin-top: 8px; }
+.card-lancamentos-painel { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.tabela-lancamentos { width: 100%; font-size: 12px; }
+.tabela-lancamentos thead { background: var(--bg-2); }
+.tabela-lancamentos th { padding: 6px 8px; text-align: left; font-weight: 600; color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: 0.04em; }
+.tabela-lancamentos td { padding: 6px 8px; border-top: 1px solid var(--border); }
+.tabela-lancamentos tbody tr:hover { background: var(--bg-2); }
+.empty-mini { padding: 12px; color: var(--muted); font-size: 12px; text-align: center; }
+.muted.small { font-size: 11px; color: var(--muted); margin-top: 4px; text-align: center; }
+.input-small {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--ink);
+  border-radius: 4px;
+  font-size: 13px;
+}
 .card, .panel {
   background: var(--surface);
   border: 1px solid var(--line);

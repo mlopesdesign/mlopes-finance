@@ -34,6 +34,11 @@ const api = (canal, dados = {}) => {
   if (canal === 'parcelamentos:detectarDoExtrato') return [];
   if (canal === 'custosFixos:resumoMes') return { mes: '2026-08', totalPrevistoCentavos: 0, totalPagoCentavos: 0, percentualPago: 0, custosFixos: [] };
   if (canal === 'custosFixos:listar') return [];
+  // v0.12.3: gastos recorrentes
+  if (canal === 'gastosRecorrentes:listar') return [];
+  if (canal === 'gastosRecorrentes:detectar') return [];
+  if (canal === 'gastosRecorrentes:relatorioMensal') return [];
+  if (canal === 'gastosRecorrentes:relatorioAnual') return null;
   if (canal === 'relatorios:balancete') return [];
   if (canal === 'importacao:listar') return [];
   if (canal === 'faturas:listarDetalhadas') return [];
@@ -144,6 +149,7 @@ const telas = [
   { nome: 'faturas', importar: () => import('../src/js/telas/faturas.js').then(m => m.renderFaturas(1, api)) },
   { nome: 'custosFixos', importar: () => import('../src/js/telas/custosFixos.js').then(m => m.renderCustosFixos(1, api)) },
   { nome: 'parcelamentos', importar: () => import('../src/js/telas/parcelamentos.js').then(m => m.renderParcelamentos(1, api)) },
+  { nome: 'recorrencias', importar: () => import('../src/js/telas/recorrencias.js').then(m => m.renderRecorrencias(1, api)) },
   { nome: 'relatorios', importar: () => import('../src/js/telas/relatorios.js').then(m => m.renderRelatorios(1, api)) },
   { nome: 'importacao', importar: () => import('../src/js/telas/importacao.js').then(m => m.renderImportacao(1, api)) },
   { nome: 'contextos', importar: () => import('../src/js/telas/contextos.js').then(m => m.renderContextos(1, api, () => {})) },

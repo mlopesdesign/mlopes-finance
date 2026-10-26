@@ -87,3 +87,49 @@
 - **Motivação do user** (gravado pra nunca repetir): "não quero um programa que mostre, quero que seja funcional". User quer SOFTWARE funcional (gera, calcula, alerta, lembra), não só visualização. Sempre que o user pedir "resumo" ou "motor", pensar em: agregação, comparação temporal, alertas proativos, geração automática de dados (recorrências, parcelamentos).
 
 ## 
+## 0.12.0 — Importação automática de histórico financeiro
+
+- Importação OFX/CSV processa automaticamente quando a conta é identificada.
+- Receitas e despesas recebem natureza e categorias automáticas.
+- Categorias são criadas sob demanda para não exigir cadastro manual.
+- Compras parceladas reconhecidas no extrato são enviadas para Parcelamentos e vinculadas ao cartão/fatura.
+- Históricos incompletos reconstroem parcelas anteriores e futuras a partir de `N/M`.
+- Parser CSV aceita valores brasileiros (`1.234,56`) e colunas separadas de débito/crédito.
+- Testes: 138 aprovados.
+## 0.12.1 — Correção do histórico importado e parcelamentos quitados
+
+- Extratos processados automaticamente agora criam lançamentos como conciliados, sem aparecerem em “Baixas e saldos em aberto”.
+- A tela de baixas passou a excluir contas de cartão e movimentos sem saldo pendente.
+- Migração v8 regulariza o histórico existente: movimentos importados, faturas vencidas e parcelas antigas.
+- Parcelamentos antigos são encerrados quando não há parcela vencida pendente; parcelas futuras continuam visíveis como vigentes.
+- Testes: **141 aprovados, 0 falhas**.
+## 0.12.2 — Correção do contador do painel
+
+- O cartão “Lançamentos” do painel agora exibe a quantidade real, em vez de `undefined`.
+- Testes e pacote foram atualizados sem alterar os dados já corrigidos.
+
+## 0.12.3 — HOTFIX auditor v0.11.4 + Detecção de gastos recorrentes (Uber, 99, Adobe, etc)
+
+### Correções críticas do auditor v0.11.4
+- **Projetos com clienteId**: o `listarProjetos` agora faz LEFT JOIN com `clientes` e retorna `cliente_nome` (corrige o bug em que `r[2]` era tratado como nome na tela, mas em `projetos` é `cliente_id`). A tela genérica ganhou campo `clienteId` (select carregado de `clientes:listar`) e atributo `displayField` que mostra o nome na tabela. `obterProjeto` adicionado pra edição com shape completo.
+- **Clamp do dia 31 em meses curtos**: `calcularCicloDaCompra` e a helper `diasNoMes(ano, mes)` agora clampam ao último dia do mês. Sem o fix, com `dia_fechamento=31` em abril/2026, gerava `2026-04-31` que o SQLite normalizava silenciosamente para `2026-05-01`, propagando datas erradas em faturas.
+- **DRY entre migração v8 e `regularizarHistoricoCartoes`**: a migração v8 agora delega para o helper em `cartoes.js` em vez de duplicar o SQL.
+
+### Nova feature: Detecção de gastos recorrentes
+- Heurística: agrupa lançamentos de despesa por (nome normalizado + valor_centavos) e exige mínimo 2 ocorrências.
+- Normalização remove números, pontuação, deixa lowercase, colapsa espaços.
+- Periodicidade detectada automaticamente: semanal, quinzenal, mensal, bimestral, trimestral, semestral, anual, irregular (baseado no intervalo médio entre ocorrências).
+- Auto-categorização por keyword: Uber/99 → Transporte, Netflix/Spotify → Streaming, Adobe/Figma → Software, iFood → Delivery, Vivo/Claro → Telefonia, CPFL/Eletro → Energia, etc.
+- Tela `Recorrências` na sidebar: botão "🔍 Detectar", lista de confirmados, modal de confirmação com checkboxes, "📊 Relatório mensal" (12 meses estimado vs real), "📈 Relatório anual" (top 10 + variação YoY).
+- Idempotente: salvar 2x a mesma detecção atualiza em vez de duplicar.
+
+### Outras correções
+- AGENTS.md regra 6 atualizada (preserva `.old` em vez de remover).
+- `.gitignore` ganhou `output/` e `tmp/`.
+- 3 testes debug órfãos (`tmp-bug-*.mjs`) movidos para `core.test.mjs` como testes reais.
+- Schema v9: tabelas `gastos_recorrentes` + `gastos_recorrentes_lancamentos` (com FK CASCADE).
+
+### Estatísticas
+- **158/158 testes verde** (10 novos: 4 do v0.12.3 base + 9 da feature de recorrências, ajustados para o novo schema_version 9).
+- **Bump v0.12.2 → v0.12.3** (5 lugares).
+- **Motivação do user** (gravado pra nunca repetir): "vc está fazendo uma merda manual" + "o programa deverá também identificar gastos recorrentes como Uber, 99, adobe, etc e me dar relatorios mensais e anuais desses gastos". SEMPRE que houver padrão repetitivo, detectar automaticamente. SEMPRE separar visualmente resultado em FINALIZADO vs VIGENTE. SEMPRE usar TODOS os sinais disponíveis.

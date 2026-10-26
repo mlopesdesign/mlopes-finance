@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.11.4';
+export const APP_VERSION = '0.13.1';
 
 export async function abrirBancoLocal(SQL, schema) {
   if (!globalThis.Neutralino) throw new Error('O aplicativo precisa ser executado pelo MLopes Finance instalado.');
@@ -48,14 +48,21 @@ export async function abrirBancoLocal(SQL, schema) {
       try { await Neutralino.filesystem.move(origem, destino); } catch { /* origem sumiu */ }
     }
   }
-  const persistir = async () => {
-    // 1. tmp
-    await Neutralino.filesystem.writeBinaryFile(temporario, db.export());
-    // 2. atual -> .old (move sobrescreve .old se ja existir)
-    await moverSeguro(arquivo, antigo);
-    // 3. tmp -> atual (move sobrescreve)
-    await moverSeguro(temporario, arquivo);
-    // 4. .old preservado (recovery manual). NAO removido.
+  // Todas as rotas da API podem disparar persistencias sem await. A fila
+  // serializa os snapshots para que uma importacao em lote nunca sobrescreva
+  // um .tmp enquanto outra gravacao ainda esta movendo o arquivo.
+  let filaPersistencia = Promise.resolve();
+  const persistir = () => {
+    filaPersistencia = filaPersistencia.then(async () => {
+      // 1. tmp
+      await Neutralino.filesystem.writeBinaryFile(temporario, db.export());
+      // 2. atual -> .old (move sobrescreve .old se ja existir)
+      await moverSeguro(arquivo, antigo);
+      // 3. tmp -> atual (move sobrescreve)
+      await moverSeguro(temporario, arquivo);
+      // 4. .old preservado (recovery manual). NAO removido.
+    });
+    return filaPersistencia;
   };
   return { db, persistir, arquivo };
 }

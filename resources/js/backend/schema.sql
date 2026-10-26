@@ -288,3 +288,47 @@ CREATE INDEX IF NOT EXISTS idx_parcelamentos_contexto ON parcelamentos(contexto_
 CREATE INDEX IF NOT EXISTS idx_parcelas_parcelamento ON parcelas(parcelamento_id, numero);
 CREATE INDEX IF NOT EXISTS idx_parcelas_vencimento ON parcelas(data_vencimento, status);
 CREATE INDEX IF NOT EXISTS idx_parcelas_fatura ON parcelas(fatura_id);
+
+-- v0.12.3: Gastos recorrentes detectados. Diferente de recorrencias (que e
+-- template+geracao), gastos_recorrentes e um padrao descoberto nos lancamentos
+-- existentes (Uber, 99, Adobe, etc). Serve pra relatorio mensal/anual.
+CREATE TABLE IF NOT EXISTS gastos_recorrentes (
+  id INTEGER PRIMARY KEY,
+  contexto_id INTEGER NOT NULL REFERENCES contextos_financeiros(id),
+  nome_normalizado TEXT NOT NULL,
+  nome_exibicao TEXT NOT NULL,
+  valor_centavos INTEGER NOT NULL CHECK (valor_centavos > 0),
+  periodicidade TEXT NOT NULL CHECK (periodicidade IN ('semanal','quinzenal','mensal','bimestral','trimestral','semestral','anual','irregular')),
+  intervalo_medio_dias INTEGER NOT NULL,
+  data_primeira TEXT NOT NULL,
+  data_ultima TEXT NOT NULL,
+  ocorrencias INTEGER NOT NULL,
+  categoria_id INTEGER REFERENCES categorias(id) ON DELETE SET NULL,
+  conta_id INTEGER REFERENCES contas(id) ON DELETE SET NULL,
+  categoria_sugerida TEXT NOT NULL DEFAULT '',
+  ativo INTEGER NOT NULL DEFAULT 1,
+  criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  atualizado_em TEXT
+);
+CREATE TABLE IF NOT EXISTS gastos_recorrentes_lancamentos (
+  gastos_recorrente_id INTEGER NOT NULL REFERENCES gastos_recorrentes(id) ON DELETE CASCADE,
+  lancamento_id INTEGER NOT NULL REFERENCES lancamentos(id) ON DELETE CASCADE,
+  PRIMARY KEY (gastos_recorrente_id, lancamento_id)
+);
+CREATE INDEX IF NOT EXISTS idx_gastos_recorrentes_contexto ON gastos_recorrentes(contexto_id, ativo);
+CREATE INDEX IF NOT EXISTS idx_gastos_recorrentes_lancamentos ON gastos_recorrentes_lancamentos(lancamento_id);
+CREATE INDEX IF NOT EXISTS idx_gastos_recorrentes_lookup ON gastos_recorrentes(contexto_id, nome_normalizado, valor_centavos);
+
+-- v0.12.7: Palavras-chave para busca controlada. User cadastra palavras
+-- (ex: "Uber", "Vivo", "99") e o sistema busca em TODOS os lancamentos
+-- de despesa do contexto (substring case-insensitive em descricao).
+-- Mostra totais da semana, mes, ano e comparativo entre anos.
+CREATE TABLE IF NOT EXISTS palavras_chave (
+  id INTEGER PRIMARY KEY,
+  contexto_id INTEGER NOT NULL REFERENCES contextos_financeiros(id),
+  nome TEXT NOT NULL,
+  ativo INTEGER NOT NULL DEFAULT 1,
+  criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(contexto_id, nome)
+);
+CREATE INDEX IF NOT EXISTS idx_palavras_chave_contexto ON palavras_chave(contexto_id, ativo);

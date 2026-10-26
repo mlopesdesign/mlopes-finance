@@ -17,9 +17,10 @@ Antes da primeira instalação comercial, nome, `applicationId`, binário e cami
 3. Toda linha financeira pertence a um contexto financeiro. Contextos, clientes, contas, categorias e centros de custo são cadastros editáveis.
 4. Valores monetários são inteiros em centavos. Datas operacionais usam `YYYY-MM-DD`.
 5. Não apagar nem alterar lançamento conciliado; correções são por estorno/ajuste auditável.
-6. Arquivo de banco: `tmp → atual.old → tmp para atual → remove old`; jamais remover o atual antes.
+6. Arquivo de banco: `tmp → atual.old → tmp para atual → preserva .old por 1 ciclo`; jamais remover o atual antes. (O `.old` é mantido como fallback automático caso o `.neu` precise ser revertido. O usuário pode apagar manualmente se quiser.)
 7. Migrações são idempotentes e testadas contra banco anterior.
 8. Cada build sobe a versão e atualiza testes, documentação, mapa técnico e histórico.
+9. **Build sempre copia o `Setup.exe` pra pasta `instalador/` local** com nome versionado (`MLopesFinance_Setup_vX.Y.Z.exe`). Marcio (2026-08-20) pediu pra ter o .exe sempre disponível localmente. Pasta `instalador/` é gitignored (binário não vai pro repo).
 
 ## Limites e módulos
 

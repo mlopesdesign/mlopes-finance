@@ -21,8 +21,9 @@ import { calcularCicloDaCompra, abrirFatura } from './cartoes.js';
 
 function adicionarMeses(dataISO, meses) {
   const [y, m, d] = dataISO.split('-').map(Number);
-  const ny = y + Math.floor((m - 1 + meses) / 12);
-  const nm = ((m - 1 + meses) % 12) + 1;
+  const totalMeses = y * 12 + (m - 1) + meses;
+  const ny = Math.floor(totalMeses / 12);
+  const nm = ((totalMeses % 12) + 12) % 12 + 1;
   const ultimo = new Date(ny, nm, 0).getDate();
   const nd = Math.min(d, ultimo);
   return `${ny}-${String(nm).padStart(2, '0')}-${String(nd).padStart(2, '0')}`;
@@ -598,7 +599,12 @@ export function detectarParcelamentosDoExtrato(db, contextoId, cartaoId) {
   const candidatos = [];
   for (const g of grupos.values()) {
     g.itens.sort((a, b) => a.numero - b.numero);
-    const valorTotal = g.itens.reduce((s, i) => s + i.valorCentavos, 0);
+    // Em um historico antigo pode existir apenas a parcela 3/12. O total do
+    // parcelamento nao pode ser a soma do que foi importado; deve ser
+    // estimado pela parcela media multiplicada pelo total contratado.
+    const somaObservada = g.itens.reduce((s, i) => s + i.valorCentavos, 0);
+    const valorMedio = Math.round(somaObservada / g.itens.length);
+    const valorTotal = g.itens.length < g.totalParcelas ? valorMedio * g.totalParcelas : somaObservada;
     candidatos.push({
       nomeBase: g.nomeBase,
       totalParcelas: g.totalParcelas,
@@ -651,9 +657,10 @@ export function criarParcelamentosDetectados(db, contextoId, cartaoId, candidato
     // Calcula valor base e resto (igual criarParcelamento)
     const valorBase = Math.floor(c.valorTotalCentavos / c.totalParcelas);
     const resto = c.valorTotalCentavos - valorBase * c.totalParcelas;
-    // Pega a 1a parcela (menor numero) pra inferir data de inicio
+    // Reconstroi o inicio real. Se o primeiro extrato antigo for a parcela
+    // 3/12, as parcelas 1 e 2 ficam nos dois meses anteriores.
     const itensOrdenados = [...c.itens].sort((a, b) => a.numero - b.numero);
-    const primeiraData = itensOrdenados[0].dataCompetencia;
+    const primeiraData = adicionarMeses(itensOrdenados[0].dataCompetencia, -(itensOrdenados[0].numero - 1));
     db.run('BEGIN');
     try {
       // 1. Cria o parcelamento

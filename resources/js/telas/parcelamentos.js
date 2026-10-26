@@ -528,11 +528,11 @@ function abrirModalDeteccao(cartoes) {
         <button class="button secondary" id="parcelamento-deteccao-fechar">Fechar</button>
       </div>
       <p class="subtitle">Achei <strong>${totalCandidatos}</strong> compra(s) parcelada(s) nos extratos importados. ${totalIncompletos > 0 ? `<strong style="color:var(--negative);">${totalIncompletos}</strong> tao incompletas (faltam parcelas).` : ''} Marca quais quer transformar em parcelamento. O sistema vincula automaticamente os lancamentos existentes e cria as parcelas que faltam.</p>
-      <div style="margin-bottom:12px;">
-        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-          <input type="checkbox" id="parcelamento-deteccao-todos" checked />
-          <span><strong>Selecionar todos</strong></span>
-        </label>
+      <div style="margin-bottom:12px; display:flex; align-items:center; gap:12px;">
+        <button type="button" class="button ghost small" id="parc-selecionar-todos">☑ Selecionar todos</button>
+        <button type="button" class="button ghost small" id="parc-desmarcar-todos">☐ Desmarcar todos</button>
+        <button type="button" class="button ghost small" id="parc-inverter">⇄ Inverter</button>
+        <span class="muted" id="parc-contador">${totalCandidatos} de ${totalCandidatos} selecionados</span>
       </div>
       ${grupos.map(g => `
         <div class="panel" style="border-color: var(--brand); margin-bottom:10px;">
@@ -563,10 +563,28 @@ function abrirModalDeteccao(cartoes) {
   document.body.appendChild(overlay);
   // Fechar
   document.getElementById('parcelamento-deteccao-fechar').onclick = () => overlay.remove();
-  // Selecionar todos
-  document.getElementById('parcelamento-deteccao-todos').onchange = (e) => {
-    overlay.querySelectorAll('input.parcelamento-deteccao-item').forEach(cb => cb.checked = e.target.checked);
+  // v0.12.6: helpers de selecao em massa + contador em tempo real
+  const itensCbs = () => overlay.querySelectorAll('input.parcelamento-deteccao-item');
+  const contadorEl = document.getElementById('parc-contador');
+  const atualizarContadorParc = () => {
+    const total = itensCbs().length;
+    const marcados = [...itensCbs()].filter((c) => c.checked).length;
+    if (contadorEl) contadorEl.textContent = `${marcados} de ${total} selecionados`;
   };
+  document.getElementById('parc-selecionar-todos').onclick = () => {
+    itensCbs().forEach((cb) => { cb.checked = true; });
+    atualizarContadorParc();
+  };
+  document.getElementById('parc-desmarcar-todos').onclick = () => {
+    itensCbs().forEach((cb) => { cb.checked = false; });
+    atualizarContadorParc();
+  };
+  document.getElementById('parc-inverter').onclick = () => {
+    itensCbs().forEach((cb) => { cb.checked = !cb.checked; });
+    atualizarContadorParc();
+  };
+  itensCbs().forEach((cb) => { cb.onchange = atualizarContadorParc; });
+  atualizarContadorParc();
   // Criar
   document.getElementById('parcelamento-deteccao-criar').onclick = () => {
     const selecionados = Array.from(overlay.querySelectorAll('input.parcelamento-deteccao-item:checked'));

@@ -4,12 +4,13 @@ import { getAllConfig, getConfig, setConfig, deleteConfig, resetConfig } from '.
 import { criarBackup, radiografar, restaurarBackup, validarCiclo, resetarBanco } from './core/backup.js';
 import { criarCliente, listarClientes, atualizarCliente, criarFornecedor, listarFornecedores, atualizarFornecedor, criarProjeto, listarProjetos, atualizarProjeto, criarCentroCusto, listarCentrosCusto, atualizarCentroCusto, criarTag, listarTags, atualizarTag, vincularTagLancamento, listarTagsDoLancamento, excluirCliente, excluirFornecedor, excluirProjeto, excluirCentroCusto, excluirTag, desvincularTagLancamento } from './core/cadastros.js';
 import { criarTransferencia, listarTransferencias, excluirTransferencia } from './core/transferencias.js';
-import { registrarBaixa, listarBaixas, saldoEmAberto, removerBaixa } from './core/baixas.js';
-import { criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias, excluirRecorrencia, desativarRecorrencia } from './core/recorrencias.js';
+import { registrarBaixa, listarBaixas, listarLancamentosPendentesDeBaixa, saldoEmAberto, removerBaixa } from './core/baixas.js';
+import { criarRecorrencia, gerarProximaOcorrencia, listarRecorrencias, excluirRecorrencia, desativarRecorrencia, detectarGastosRecorrentes, salvarGastosRecorrentesDetectados, listarGastosRecorrentes, obterGastoRecorrente, excluirGastoRecorrente, relatorioGastosRecorrentesMensal, relatorioGastosRecorrentesAnual, relatorioGastosRecorrentesPorCategoria } from './core/recorrencias.js';
+import { criarPalavraChave, listarPalavrasChave, atualizarPalavraChave, excluirPalavraChave, buscarLancamentosPorPalavra, totaisPorPalavra, comparativoAnualPorPalavra, ultimos12MesesPorPalavra } from './core/palavraschave.js';
 import { criarCustoFixo, listarCustosFixos, totalCustosFixosMes, resumoCustosFixosMes, gerarOcorrenciasMesAtual, alternarCustoFixo, excluirCustoFixo } from './core/custosFixos.js';
 import { criarParcelamento, listarParcelamentos, listarParcelas, pagarParcela, excluirParcelamento, projecaoParcelasPorMes, resumoCompletoPorMes, calendarioCompletoParcelas, obterParcelamentoCompleto, detectarParcelamentosDoExtrato, criarParcelamentosDetectados } from './core/parcelamentos.js';
-import { criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura, atualizarCartao, excluirCartao, listarFaturasDetalhadas, listarLancamentosDaFatura, calcularCicloDaCompra, faturaAtualDoCartao } from './core/cartoes.js';
-import { criarPreviaImportacao, confirmarImportacao, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao } from './core/importacao.js';
+import { criarCartao, listarCartoes, abrirFatura, pagarFatura, listarFaturas, adicionarLancamentoNaFatura, atualizarCartao, excluirCartao, listarFaturasDetalhadas, listarLancamentosDaFatura, calcularCicloDaCompra, faturaAtualDoCartao, pagarFaturasVencidasAutomaticamente } from './core/cartoes.js';
+import { criarPreviaImportacao, confirmarImportacao, importarAutomaticamente, listarImportacoes, cancelarImportacao, excluirImportacao, excluirLancamentosImportacao, reciclarImportacao } from './core/importacao.js';
 import { balancete, comparativo, exportaCSV, gastosPorMes, topCategorias, topDespesas, gastosPorConta, faturasAVencer, variacaoMensal, alertas, exportarMovimentosCSV } from './core/relatorios.js';
 import { compararVersao } from './core/update.js';
 import { checarAtualizacao, baixarAtualizacao, aplicarAtualizacao, listarReleases, pathTempInstalador } from './update.js';
@@ -84,6 +85,7 @@ export function criarApi(db, persistir = () => {}) {
     // Baixas
     'baixas:registrar': (d) => { const out = registrarBaixa(db, d); persistir(); return out; },
     'baixas:listar': (d) => listarBaixas(db, d.lancamentoId),
+    'baixas:pendentes': (d) => listarLancamentosPendentesDeBaixa(db, d.contextoId, d.limite ?? 500),
     'baixas:saldo': (d) => saldoEmAberto(db, d.lancamentoId),
     'baixas:remover': (d) => { removerBaixa(db, d.id); persistir(); return true; },
 
@@ -93,6 +95,24 @@ export function criarApi(db, persistir = () => {}) {
     'recorrencias:listar': (d) => listarRecorrencias(db, d.contextoId),
     'recorrencias:excluir': (d) => { const r = excluirRecorrencia(db, d.id, { cascade: d.cascade === true }); persistir(); return r; },
     'recorrencias:desativar': (d) => { const r = desativarRecorrencia(db, d.id); persistir(); return r; },
+    // v0.12.3: Gastos recorrentes detectados (Uber, 99, Adobe, etc) + relatorios
+    'gastosRecorrentes:detectar': (d) => detectarGastosRecorrentes(db, d.contextoId, { minOcorrencias: d.minOcorrencias ?? 2 }),
+    'gastosRecorrentes:salvar': (d) => { const r = salvarGastosRecorrentesDetectados(db, d.contextoId, d.candidatos); persistir(); return r; },
+    'gastosRecorrentes:listar': (d) => listarGastosRecorrentes(db, d.contextoId, { incluirInativos: d.incluirInativos === true }),
+    'gastosRecorrentes:obter': (d) => obterGastoRecorrente(db, d.id),
+    'gastosRecorrentes:excluir': (d) => { const r = excluirGastoRecorrente(db, d.id, { cascade: d.cascade === true }); persistir(); return r; },
+    'gastosRecorrentes:relatorioMensal': (d) => relatorioGastosRecorrentesMensal(db, d.contextoId, { mesInicio: d.mesInicio, ano: d.ano }),
+    'gastosRecorrentes:relatorioAnual': (d) => relatorioGastosRecorrentesAnual(db, d.contextoId, { ano: d.ano }),
+    'gastosRecorrentes:relatorioPorCategoria': (d) => relatorioGastosRecorrentesPorCategoria(db, d.contextoId, { ano: d.ano }),
+    // v0.12.7: Palavras-chave (busca controlada por keyword)
+    'palavrasChave:criar': (d) => { const id = criarPalavraChave(db, d); persistir(); return id; },
+    'palavrasChave:listar': (d) => listarPalavrasChave(db, d.contextoId, { incluirInativas: d.incluirInativas === true }),
+    'palavrasChave:atualizar': (d) => { atualizarPalavraChave(db, d.id, d); persistir(); return true; },
+    'palavrasChave:excluir': (d) => { const r = excluirPalavraChave(db, d.id, { cascade: d.cascade === true }); persistir(); return r; },
+    'palavrasChave:buscar': (d) => buscarLancamentosPorPalavra(db, d.contextoId, d.palavra, { ano: d.ano, limite: d.limite }),
+    'palavrasChave:totais': (d) => totaisPorPalavra(db, d.contextoId, d.palavra),
+    'palavrasChave:comparativoAnual': (d) => comparativoAnualPorPalavra(db, d.contextoId, { anoA: d.anoA, anoB: d.anoB }),
+    'palavrasChave:ultimos12Meses': (d) => ultimos12MesesPorPalavra(db, d.contextoId, d.palavra),
     // v0.10.0: Custos Fixos (interface simplificada em cima de recorrencias)
     'custosFixos:criar': (d) => { const r = criarCustoFixo(db, d); persistir(); return r; },
     'custosFixos:listar': (d) => listarCustosFixos(db, d.contextoId),
@@ -114,6 +134,8 @@ export function criarApi(db, persistir = () => {}) {
     'faturas:listarLancamentos': (d) => listarLancamentosDaFatura(db, d.faturaId),
     'faturas:calcularCiclo': (d) => calcularCicloDaCompra(db, d),
     'faturas:adicionarLancamento': (d) => { adicionarLancamentoNaFatura(db, d.faturaId, d.valorCentavos); persistir(); return true; },
+    // v0.13.0: baixa automatica de faturas vencidas
+    'cartoes:sincronizarBaixasAutomaticas': (d) => { const r = pagarFaturasVencidasAutomaticamente(db, d.contextoId, { dataReferencia: d.dataReferencia }); persistir(); return r; },
 
     // Backup
     'backup:radiografar': () => radiografar(db),
@@ -125,6 +147,7 @@ export function criarApi(db, persistir = () => {}) {
     // Importacao de extratos (OFX/CSV) — Fase 5
     'importacao:criarPrevia': (d) => { const out = criarPreviaImportacao(db, d); persistir(); return out; },
     'importacao:confirmar': (d) => { const out = confirmarImportacao(db, d); persistir(); return out; },
+    'importacao:automatizar': (d) => { const out = importarAutomaticamente(db, d); persistir(); return out; },
     'importacao:listar': (d) => listarImportacoes(db, d.contextoId),
     'importacao:cancelar': (d) => { cancelarImportacao(db, d.importacaoId); persistir(); return true; },
     'importacao:excluir': (d) => { const out = excluirImportacao(db, d.importacaoId); persistir(); return out; },

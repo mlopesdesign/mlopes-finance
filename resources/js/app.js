@@ -11,9 +11,11 @@ import { renderCartoes } from './telas/cartoes.js';
 import { renderFaturas } from './telas/faturas.js';
 import { renderCustosFixos } from './telas/custosFixos.js';
 import { renderParcelamentos } from './telas/parcelamentos.js';
+import { renderRecorrencias } from './telas/recorrencias.js';
+import { renderPalavrasChave } from './telas/palavras-chave.js';
 import * as updUI from './update.js';
 
-const APP_VERSION = '0.11.4';
+const APP_VERSION = '0.13.1';
 const FALLBACK_VERSION = AMBIENTE_VERSION;
 let api; let contextoId; let contas = []; let categorias = []; let appDbPath = '';
 const $ = (s) => document.querySelector(s); const app = $('#app');
@@ -193,6 +195,29 @@ async function boot() {
   render('dashboard');
   log('boot done');
 
+  // v0.13.1: baixa automatica de faturas vencidas (idempotente, max 1x/dia)
+  // Roda em background pra nao bloquear o boot.
+  try {
+    const hoje = new Date().toISOString().slice(0, 10);
+    const meta = api('configuracoes:obter', { chave: 'ultima_baixa_automatica' });
+    if (meta?.valor !== hoje) {
+      // Roda no proximo tick pra nao atrasar o boot
+      setTimeout(() => {
+        try {
+          const r = api('cartoes:sincronizarBaixasAutomaticas', { contextoId });
+          const total = r.processadas.length;
+          if (total > 0) {
+            log(`baixa automatica: ${total} fatura(s) processada(s) em ${new Date().toISOString()}`);
+            if (globalThis.toastInfo) toastInfo(`${total} fatura(s) paga(s) automaticamente.`);
+          }
+          api('configuracoes:salvar', { chave: 'ultima_baixa_automatica', valor: hoje, tipo: 'texto' });
+        } catch (e) {
+          log('erro na baixa automatica:', e.message);
+        }
+      }, 1500);
+    }
+  } catch (e) { log('baixa automatica setup falhou:', e.message); }
+
   // Auto-update via GitHub Releases: checa em background, atualiza pill/banner/modal
   globalThis._appApi = api;
   globalThis._appVersion = APP_VERSION;
@@ -244,6 +269,8 @@ function render(view) {
   }
   if (view === 'custosfixos') return renderCustosFixos(contextoId, api);
   if (view === 'parcelamentos') return renderParcelamentos(contextoId, api);
+  if (view === 'recorrencias') return renderRecorrencias(contextoId, api);
+  if (view === 'palavraschave') return renderPalavrasChave(contextoId, api);
   if (view === 'contextos') return renderContextos(contextoId, api, (novoId) => trocarContextoAtivo(novoId, api));
   if (view === 'configuracoes') return renderConfiguracoes(contextoId, api, appDbPath);
   return renderDashboard();
@@ -805,7 +832,7 @@ function renderTransferencias() {
 }
 
 function renderBaixas() {
-  const data = api('lancamentos:listar', { contextoId });
+  const data = api('baixas:pendentes', { contextoId });
   // Schema detalhado: 0=id 7=natureza 8=valor 9=data_competencia 11=desc 14=status
   app.innerHTML = `<span class="eyebrow">FINANCEIRO</span><div class="toolbar"><div><h1>Baixas e saldos em aberto</h1><p class="subtitle">Pagamentos parciais e totais. Não excede o valor original.</p></div><div style="display:flex;gap:8px"><button class="button danger" id="excluir-todos" title="Excluir TODOS os lançamentos" ${!data.length ? 'style="display:none"' : ''}>🗑 Excluir todos (${data.length})</button></div></div><div class="panel"><table><thead><tr><th>Lançamento</th><th>Vencimento</th><th>Valor original</th><th>Saldo em aberto</th><th>Status</th><th>Ação</th></tr></thead><tbody>${data.map((l) => { const id = l[0]; const saldo = api('baixas:saldo', { lancamentoId: id }); const desc = String(l[11] || '').replace(/[<>&"']/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;' }[c])); return `<tr><td>${desc}</td><td>${fmtData(l[9]) || '—'}</td><td>${money(l[8])}</td><td>${money(saldo)}</td><td>${l[14] || 'aberto'}</td><td><button class="button ghost" data-baixa="${id}">Lançar baixa</button></td></tr>`; }).join('')}</tbody></table>${!data.length ? '<div class="empty"><div class="icon">◌</div>Nenhum lançamento para dar baixa.</div>' : ''}</div>`;
   document.querySelectorAll('button[data-baixa]').forEach(btn => btn.onclick = () => formBaixa(Number(btn.dataset.baixa)));

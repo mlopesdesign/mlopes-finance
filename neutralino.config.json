@@ -1,6 +1,6 @@
 {
   "applicationId": "com.mlopesdesign.mlopesfinance",
-  "version": "0.11.4",
+  "version": "0.13.1",
   "url": "/",
   "documentRoot": "/resources/",
   "defaultMode": "window",
@@ -40,6 +40,3 @@
   "applicationName": "MLopes Finance",
   "applicationIcon": "resources/icons/appIcon.png"
 }
-
-
-

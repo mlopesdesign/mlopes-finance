@@ -1,5 +1,5 @@
 // MLopes Finance — Tela de Importação de Extratos (OFX / CSV)
-// Fluxo: selecionar arquivo -> previa -> escolher conta -> confirmar
+// Fluxo: selecionar arquivo -> processamento automatico -> excecao manual apenas se a conta for ambigua
 // v0.8.8-hotfix2: header explicito "Vai para" + toast em todas as acoes
 
 let _contextoId = null;
@@ -25,7 +25,7 @@ export function renderImportacao(contextoId, api) {
   app.innerHTML = `
     <span class="eyebrow">FASE 5</span>
     <h1>Importar <em>extrato</em> bancário</h1>
-    <p class="subtitle">OFX ou CSV. Detecta duplicidade por data, valor e descrição. Nada é criado até você confirmar.</p>
+    <p class="subtitle">OFX ou CSV. Classifica receitas, despesas, categorias e parcelamentos automaticamente. Só pede intervenção se não conseguir identificar a conta.</p>
 
     <div class="panel" id="imp-destino-panel">
       <h2>📍 Para onde vão os dados</h2>
@@ -81,7 +81,7 @@ export function renderImportacao(contextoId, api) {
     </div>
 
     <div class="panel" id="imp-confirmar-panel" style="display:none;">
-      <h2>3. Confirmar importação</h2>
+      <h2>Exceção: identificar conta</h2>
       <div class="field-row">
         <div>
           <div class="field-label">Conta de destino</div>
@@ -96,7 +96,7 @@ export function renderImportacao(contextoId, api) {
       </div>
       <div class="form-actions" style="margin-top: 16px;">
         <button class="button secondary" id="imp-cancelar">Cancelar importação</button>
-        <button class="button" id="imp-confirmar">Confirmar importação</button>
+          <button class="button" id="imp-confirmar">Processar automaticamente</button>
       </div>
     </div>
 
@@ -179,6 +179,17 @@ async function preVisualizar() {
     renderTabelaPrevia();
     document.getElementById('imp-previa-panel').style.display = 'block';
     document.getElementById('imp-confirmar-panel').style.display = 'block';
+    // O caminho normal não exige confirmação: tenta resolver a conta e processar
+    // tudo imediatamente. O painel de exceção só fica visível se houver mais de
+    // uma conta e o nome do arquivo não indicar qual deve receber o extrato.
+    try {
+      const out = _api('importacao:automatizar', { importacaoId: _importacaoAtual });
+      const c = _contasCache.find((x) => x[0] === out.conta.id);
+      mostrarResultado(out, c ? c[2] : out.conta.nome);
+    } catch (e) {
+      info.textContent = `Prévia criada (#${idImport}), mas a conta precisa ser identificada: ${e.message}`;
+      if (globalThis.toastInfo) toastInfo('Prévia pronta. O sistema precisa identificar a conta deste arquivo.');
+    }
   } catch (e) {
     if (globalThis.toastErr) toastErr('Erro na prévia: ' + e.message);
     info.textContent = 'Erro: ' + e.message;
@@ -225,31 +236,38 @@ function confirmar() {
   const c = _contasCache.find((x) => x[0] === contaId);
   const contaNome = c ? c[2] : `#${contaId}`;
   try {
-    const out = _api('importacao:confirmar', {
+    const out = _api('importacao:automatizar', {
       importacaoId: _importacaoAtual,
       contaId,
       padraoNatureza: 'despesa',
     });
-    _importacaoAtual = null;
-    document.getElementById('imp-resultado-panel').style.display = 'block';
-    // Mostra resumo com inferencias (despesa vs receita)
-    const inferidas = (out.inferencias || []).reduce((acc, i) => { acc[i.natureza] = (acc[i.natureza] || 0) + 1; return acc; }, {});
-    const txtDespesa = inferidas.despesa || 0;
-    const txtReceita = inferidas.receita || 0;
-    const resumoNatureza = (txtDespesa || txtReceita)
-      ? `<br><span class="muted" style="font-size:12px;">Inferido: <strong>${txtDespesa}</strong> despesa, <strong>${txtReceita}</strong> receita (palavras-chave + tipo da conta)</span>`
-      : '';
-    document.getElementById('imp-resultado').innerHTML =
-      `<div class="success-card"><strong>${out.importados} lançamentos criados com sucesso</strong> em <em>${escapeHtml(_contextoNome)} › ${escapeHtml(contaNome)}</em>.${resumoNatureza}<br>Veja em <em>Lançamentos</em>.</div>`;
-    document.getElementById('imp-previa-panel').style.display = 'none';
-    document.getElementById('imp-confirmar-panel').style.display = 'none';
-    document.getElementById('imp-destino-resumo').style.display = 'none';
-    document.getElementById('imp-file').value = '';
-    if (globalThis.toastOk) toastOk(`Importação concluída: ${out.importados} lançamentos em ${_contextoNome} › ${contaNome}.`, 5000);
-    renderHistorico();
+    mostrarResultado(out, contaNome);
   } catch (e) {
     if (globalThis.toastErr) toastErr('Erro ao confirmar: ' + e.message, 6000);
   }
+}
+
+function mostrarResultado(out, contaNome) {
+  _importacaoAtual = null;
+  document.getElementById('imp-resultado-panel').style.display = 'block';
+  const inferidas = (out.inferencias || []).reduce((acc, i) => {
+    acc[i.natureza] = (acc[i.natureza] || 0) + 1;
+    if (i.categoria) acc.categorias = (acc.categorias || new Set());
+    if (i.categoria) acc.categorias.add(i.categoria);
+    return acc;
+  }, {});
+  const categorias = inferidas.categorias ? [...inferidas.categorias].join(', ') : 'já existentes';
+  const parcelados = (out.parcelamentos || []).filter((p) => p.ok || p.jaExistia).length;
+  document.getElementById('imp-resultado').innerHTML =
+    `<div class="success-card"><strong>${out.importados} lançamentos processados automaticamente</strong> em <em>${escapeHtml(_contextoNome)} › ${escapeHtml(contaNome)}</em>.<br>` +
+    `Classificação: <strong>${inferidas.despesa || 0}</strong> despesa(s), <strong>${inferidas.receita || 0}</strong> entrada(s).<br>` +
+    `Categorias: ${escapeHtml(categorias)}. Parcelamentos reconhecidos: <strong>${parcelados}</strong>.<br>Veja tudo nas áreas de Lançamentos, Cartões e Parcelamentos.</div>`;
+  document.getElementById('imp-previa-panel').style.display = 'none';
+  document.getElementById('imp-confirmar-panel').style.display = 'none';
+  document.getElementById('imp-destino-resumo').style.display = 'none';
+  document.getElementById('imp-file').value = '';
+  if (globalThis.toastOk) toastOk(`Importação concluída automaticamente: ${out.importados} lançamentos.`, 5000);
+  renderHistorico();
 }
 
 function cancelar() {

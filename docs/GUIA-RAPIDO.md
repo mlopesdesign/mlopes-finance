@@ -1,64 +1,62 @@
-# Guia Rápido — MLopes Finance v0.5.0
+# Guia rápido - MLopes Finance v0.12.2
 
-Para o dia a dia. 1 página.
+Este guia é para importar seu histórico e acompanhar o resultado sem lançar tudo manualmente.
 
-## Atalhos da sidebar
+## 1. Antes de começar
 
-| Onde | O que faz |
-|---|---|
-| **Visão geral** | 8 cards de resumo (receitas, despesas, saldo, contas, clientes, projetos, centros de custo, tags). |
-| **Lançamentos** | Todos os lançamentos. Botão "Novo" (despesa/receita) e "Transferir" (entre contas). |
-| **Transferências** | Lista de débitos+créditos vinculados. |
-| **Baixas e saldos** | Lista de lançamentos com saldo em aberto. Clique em "Lançar baixa" para pagar. |
-| **Contas / Clientes / Fornecedores / Projetos / Centros de custo / Tags / Categorias** | Cadastros. Botão "Novo" + lista + edição. |
-| **Configurações** | Tema, cor da marca, nome, moeda, reset. |
+1. Abra o aplicativo e escolha o contexto no topo: por exemplo, `Pessoal` ou `ML Lopes Design`.
+2. Em `Contas`, confirme as contas bancárias, cartões e investimentos.
+3. Faça um backup em `Configurações > Avançado > Exportar backup...`.
 
-## Tarefas mais comuns
+Cada contexto tem seu próprio saldo, lançamentos e relatórios. Não misture PF e PJ no mesmo contexto.
 
-### Lançar uma despesa
-`Lançamentos` → `Novo lançamento` → Preencher (descrição, valor, data, conta) → `Salvar`.
+## 2. Importar extrato automaticamente
 
-### Pagar um lançamento
-`Lançamentos` → clicar no valor da coluna "Saldo" do lançamento → preencher valor pago (parcial ou total) → `Registrar baixa`.
+1. Abra `Importar extrato`.
+2. Selecione o arquivo OFX, QFX ou CSV.
+3. Clique em `Pré-visualizar` e depois em `Importar automaticamente`.
 
-### Transferir entre contas
-`Lançamentos` → `Transferir entre contas` → escolher origem, destino, valor → `Transferir`.
+O sistema identifica automaticamente:
 
-### Cadastrar um cliente
-`Clientes` → `Novo` → nome (obrigatório), documento, e-mail → `Salvar`.
+- entrada ou despesa pelo sinal do valor;
+- conta pelo nome/identificador do arquivo ou quando existe uma única conta compatível;
+- categoria pela descrição, criando a categoria quando necessário;
+- cartão, fatura e parcelas quando o extrato contém essa informação;
+- duplicidades por data, valor absoluto e descrição normalizada.
 
-### Mudar tema
-Topo da janela → clicar na pill `☾ Escuro` ou `☀ Claro`.
+Extrato antigo não deve gerar uma lista de contas a pagar. Movimentos importados entram como `conciliado`, pois já foram registrados no banco/cartão. No cartão, faturas e parcelas vencidas são regularizadas como pagas; somente valores atuais ou futuros continuam pendentes.
 
-### Mudar cor da marca
-`Configurações` → aba "Aparência" → color picker "Cor da marca" → `Salvar alterações`.
+## 3. Como conferir se deu certo
 
-### Restaurar padrão de fábrica
-`Configurações` → aba "Avançado" → `Restaurar padrão de fábrica`. **Apaga todas as configurações e volta aos defaults.**
+- `Visão geral`: confira o total de lançamentos e os saldos do contexto.
+- `Lançamentos`: filtre pelo período importado e confirme descrições, datas e valores.
+- `Parcelamentos`: histórico antigo deve aparecer como quitado; compras atuais/futuras ficam ativas.
+- `Baixas e saldos`: deve mostrar somente compromissos bancários realmente abertos. Compra de cartão não aparece aqui como nova dívida.
+- `Relatórios`: selecione o mês ou ano para ver receitas, despesas e saldo separados por contexto.
 
-## Regras de ouro
+## 4. Regras importantes
 
-- **Valor sempre em R$** com vírgula ou ponto. O app converte pra centavos.
-- **Data sempre `AAAA-MM-DD`**. Use o calendário, não digite.
-- **Não apague o `.sqlite`** em `%APPDATA%\MLopesFinance\dados\`. É o banco inteiro.
-- **Concilie mensalmente**: clique no "Saldo" dos lançamentos pagos pra registrar baixas.
-- **Para backup**: copie o `mlopes-finance.sqlite` para lugar seguro. (Botão de backup na UI virá na próxima sprint.)
-- **Em caso de erro "Falha ao abrir o banco"**: delete `%LOCALAPPDATA%\MLopes Design\` (cache do WebView2) e reabra.
+- Não importe o mesmo arquivo repetidamente. O hash do arquivo e a chave data + valor + descrição evitam duplicação.
+- Se o arquivo tiver várias contas e não houver identificação suficiente, o sistema para para evitar lançar na conta errada.
+- O cartão representa uma compra já registrada; a obrigação futura é a fatura, não uma segunda despesa em aberto.
+- Não apague o banco SQLite. Use backup e correção auditável.
 
-## Atalhos de teclado (em breve)
+## 5. Backup e atualização
 
-Por enquanto, use mouse. Atalhos de teclado estão planejados para v0.6.0.
+- Banco: `%APPDATA%\MLopesFinance\dados\mlopes-finance.sqlite`.
+- Antes de atualizar ou fazer uma grande importação, exporte um backup.
+- Em `Configurações > Avançado`, use `Verificar agora` para buscar uma nova versão.
+- O atualizador faz backup antes de aplicar `resources.neu` e reinicia o app.
 
-## Onde os dados ficam
+## 6. Resultado esperado no fim do mês
 
-```
-%APPDATA%\MLopesFinance\dados\
-  ├── mlopes-finance.sqlite   ← seu banco (NÃO apague)
-  ├── mlopes-finance.sqlite.old  ← versão anterior (auto-backup)
-  └── mlopes-finance.sqlite.tmp  ← temp durante gravação
-```
+Use o contexto correto, abra `Relatórios`, escolha `Este mês` e confira:
 
+1. receitas;
+2. despesas;
+3. saldo do mês;
+4. agrupamento por categoria, conta, projeto ou centro de custo.
 
-- **Importar extrato**: OFX/CSV com detecção de duplicidade (item 5 do manual).
-- **Backup e restauração** em Configurações → Avançado (item 6 do manual).
-- **Atualizações automáticas** a partir do GitHub. O app checa no boot. Se tiver versão nova, aparece uma pill no header. Clique em "Verificar agora" em Configurações → Avançado para atualizar manualmente. O changelog da nova versão é mostrado antes de você clicar em "Baixar e instalar". O banco é backupeado automaticamente antes da atualização.
+Para o resultado anual, escolha `Este ano`. Troque o contexto para gerar o balancete pessoal e o empresarial separadamente.
+
+Fonte editável: `docs/GUIA-RAPIDO.md`. Regeneração dos PDFs: `npm run docs:build`.

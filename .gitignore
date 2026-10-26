@@ -1,9 +1,13 @@
 node_modules/
 dist/
 release/
+instalador/   # copia local do Setup.exe (versionada: MLopesFinance_Setup_vX.Y.Z.exe)
 bin/
 *.log
 .tmp/
+.tmp/**
+output/
+tmp/
 .graphify_*
 run_*.py
 build_*.py

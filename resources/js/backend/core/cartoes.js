@@ -199,6 +199,87 @@ export function listarFaturasDetalhadas(db, cartaoId) {
 }
 
 /**
+ * v0.13.0: Baixa AUTOMATICA de faturas vencidas.
+ *
+ * Marcio pediu (2026-08-20): "todas as contas oriundas dos cartoes, depois
+ * do vencimento dos mesmos ja estao pagas, essa baixa tem que ser automatica".
+ *
+ * Para cada fatura com data_vencimento <= dataReferencia e status != 'paga',
+ * cria um lancamento de saida na conta de pagamento (conta_pagamento_id do
+ * cartao) com o valor_total_centavos e marca a fatura como paga.
+ *
+ * IDEMPOTENTE: verifica se ja existe um lancamento com fatura_id antes de
+ * criar. Pode rodar multiplas vezes sem duplicar.
+ *
+ * Retorna: { faturasProcessadas: [{faturaId, cartaoId, valorCentavos,
+ * lancamentoId}], faturasJaPagas, erros }
+ */
+export function pagarFaturasVencidasAutomaticamente(db, contextoId, { dataReferencia = null } = {}) {
+  if (contextoId != null && !Number.isInteger(contextoId)) throw new Error('contextoId invalido.');
+  const dataRef = dataReferencia || new Date().toISOString().slice(0, 10);
+  // Pega faturas vencidas (data_vencimento <= dataRef) e nao pagas
+  const filtroContexto = contextoId == null ? '' : 'AND ca.contexto_id = ?';
+  const paramsContexto = contextoId == null ? [dataRef] : [dataRef, contextoId];
+  const faturas = db.exec(`
+    SELECT f.id, f.cartao_id, f.ciclo, f.data_vencimento, f.valor_total_centavos, f.valor_pago_centavos, f.status,
+           ca.conta_pagamento_id, ca.nome AS cartao_nome
+    FROM faturas f
+    JOIN cartoes ca ON ca.id = f.cartao_id
+    WHERE f.data_vencimento <= ?
+      AND f.valor_total_centavos > 0
+      AND f.status != 'paga'
+      ${filtroContexto}
+    ORDER BY f.data_vencimento
+  `, paramsContexto)[0]?.values ?? [];
+  const processadas = [];
+  const jaPagas = [];
+  const erros = [];
+  db.run('BEGIN');
+  try {
+    for (const [faturaId, cartaoId, ciclo, dataVenc, total, pago, status, contaPagId, cartaoNome] of faturas) {
+      // Idempotencia: verifica se ja existe lancamento com essa fatura_id
+      const existe = db.exec('SELECT id FROM lancamentos WHERE fatura_id = ?', [faturaId])[0]?.values?.[0]?.[0];
+      if (existe) {
+        jaPagas.push({ faturaId, cartaoId, ciclo, valorCentavos: Number(total) });
+        continue;
+      }
+      if (!contaPagId) {
+        erros.push({ faturaId, cartaoId, ciclo, mensagem: 'Cartao sem conta de pagamento configurada' });
+        continue;
+      }
+      const valor = Number(total) - Number(pago);
+      if (valor <= 0) {
+        // Marcar como paga (sem criar lancamento duplicado)
+        db.run('UPDATE faturas SET valor_pago_centavos = valor_total_centavos, status = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?', ['paga', faturaId]);
+        processadas.push({ faturaId, cartaoId, ciclo, valorCentavos: 0, lancamentoId: null });
+        continue;
+      }
+      // Verifica que a conta de pagamento pertence ao mesmo contexto
+      const ctxConta = db.exec('SELECT contexto_id FROM contas WHERE id = ?', [contaPagId])[0]?.values?.[0]?.[0];
+      if (ctxConta !== contextoId) {
+        erros.push({ faturaId, cartaoId, ciclo, mensagem: 'Conta de pagamento nao pertence ao contexto' });
+        continue;
+      }
+      const agora = new Date().toISOString();
+      // Cria lancamento de saida na conta de pagamento
+      db.run(`INSERT INTO lancamentos (contexto_id, conta_id, natureza, valor_centavos, data_competencia, descricao, status, fatura_id, criado_em) VALUES (?, ?, 'despesa', ?, ?, ?, 'conciliado', ?, ?)`,
+        [contextoId, contaPagId, valor, dataRef, `Pagamento automatico fatura ${cartaoNome} ciclo ${ciclo}`, faturaId, agora]);
+      const idLanc = Number(db.exec('SELECT last_insert_rowid() AS id')[0].values[0][0]);
+      db.run('UPDATE faturas SET valor_pago_centavos = valor_total_centavos, status = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?', ['paga', faturaId]);
+      // Auditoria
+      db.run('INSERT INTO auditoria (entidade, entidade_id, acao, dados_json, criado_em) VALUES (?, ?, ?, ?, ?)',
+        ['faturas', faturaId, 'baixa_automatica', JSON.stringify({ contaPagId, valor, lancamentoId: idLanc, dataReferencia: dataRef }), agora]);
+      processadas.push({ faturaId, cartaoId, ciclo, valorCentavos: valor, lancamentoId: idLanc });
+    }
+    db.run('COMMIT');
+  } catch (e) {
+    db.run('ROLLBACK');
+    throw e;
+  }
+  return { processadas, jaPagas, erros, dataReferencia: dataRef };
+}
+
+/**
  * v0.9.0: Lista os lancamentos de uma fatura especifica.
  * JOIN com categoria pra mostrar o nome.
  */
@@ -217,6 +298,76 @@ export function listarLancamentosDaFatura(db, faturaId) {
 }
 
 /**
+ * Regulariza historico importado de cartoes.
+ *
+ * Extrato importado e evidencia de que o movimento ja ocorreu; ele nao deve
+ * virar uma nova baixa manual. Faturas vencidas ate a data de referencia sao
+ * consideradas quitadas no modo historico solicitado pelo produto. A rotina
+ * e idempotente e tambem fecha parcelas antigas reconstruidas do extrato.
+ */
+export function regularizarHistoricoCartoes(db, { contextoId = null, dataReferencia = new Date().toISOString().slice(0, 10) } = {}) {
+  if (contextoId != null && !Number.isInteger(contextoId)) throw new Error('contextoId invalido.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dataReferencia))) throw new Error('dataReferencia deve ser YYYY-MM-DD.');
+  const filtroContexto = contextoId == null ? '' : 'AND ca.contexto_id = ?';
+  const paramsContexto = contextoId == null ? [dataReferencia] : [dataReferencia, contextoId];
+  db.run('BEGIN');
+  try {
+    const faturasAntes = Number(db.exec(`
+      SELECT COUNT(*) FROM faturas f
+      JOIN cartoes ca ON ca.id = f.cartao_id
+      WHERE f.data_vencimento <= ? AND f.valor_total_centavos > 0
+        AND f.status != 'paga' ${filtroContexto}
+    `, paramsContexto)[0]?.values?.[0]?.[0] ?? 0);
+    db.run(`
+      UPDATE faturas
+      SET valor_pago_centavos = valor_total_centavos,
+          status = 'paga', atualizado_em = CURRENT_TIMESTAMP
+      WHERE data_vencimento <= ? AND valor_total_centavos > 0
+        AND status != 'paga'
+        AND cartao_id IN (SELECT id FROM cartoes WHERE 1=1 ${contextoId == null ? '' : 'AND contexto_id = ?'})
+    `, contextoId == null ? [dataReferencia] : [dataReferencia, contextoId]);
+
+    const lancamentosConciliados = Number(db.exec(`
+      SELECT COUNT(*) FROM lancamentos l
+      JOIN contas c ON c.id = l.conta_id
+      JOIN faturas f ON f.id = l.fatura_id
+      JOIN cartoes ca ON ca.id = f.cartao_id
+      WHERE c.tipo = 'cartao' AND l.status = 'aberto'
+        AND f.status = 'paga' ${contextoId == null ? '' : 'AND ca.contexto_id = ?'}
+    `, contextoId == null ? [] : [contextoId])[0]?.values?.[0]?.[0] ?? 0);
+    db.run(`
+      UPDATE lancamentos SET status = 'conciliado', atualizado_em = CURRENT_TIMESTAMP
+      WHERE status = 'aberto' AND conta_id IN (SELECT id FROM contas WHERE tipo = 'cartao')
+        AND fatura_id IN (SELECT id FROM faturas WHERE status = 'paga')
+        ${contextoId == null ? '' : 'AND contexto_id = ?'}
+    `, contextoId == null ? [] : [contextoId]);
+
+    const parcelasPagas = Number(db.exec(`
+      SELECT COUNT(*) FROM parcelas pc
+      JOIN parcelamentos pa ON pa.id = pc.parcelamento_id
+      WHERE pc.status = 'pendente' AND pc.data_vencimento <= ?
+        AND pa.cartao_id IS NOT NULL ${contextoId == null ? '' : 'AND pa.contexto_id = ?'}
+    `, contextoId == null ? [dataReferencia] : [dataReferencia, contextoId])[0]?.values?.[0]?.[0] ?? 0);
+    db.run(`
+      UPDATE parcelas SET status = 'paga', paga_em = COALESCE(paga_em, data_vencimento)
+      WHERE status = 'pendente' AND data_vencimento <= ?
+        AND parcelamento_id IN (SELECT id FROM parcelamentos WHERE cartao_id IS NOT NULL ${contextoId == null ? '' : 'AND contexto_id = ?'})
+    `, contextoId == null ? [dataReferencia] : [dataReferencia, contextoId]);
+    db.run(`
+      UPDATE parcelamentos SET ativo = 0
+      WHERE ativo = 1 AND NOT EXISTS (
+        SELECT 1 FROM parcelas pc WHERE pc.parcelamento_id = parcelamentos.id AND pc.status = 'pendente'
+      ) ${contextoId == null ? '' : 'AND contexto_id = ?'}
+    `, contextoId == null ? [] : [contextoId]);
+    db.run('COMMIT');
+    return { faturasQuitadas: faturasAntes, lancamentosConciliados, parcelasPagas };
+  } catch (e) {
+    db.run('ROLLBACK');
+    throw e;
+  }
+}
+
+/**
  * v0.9.0: Calcula o ciclo (YYYY-MM) e as datas de fechamento/vencimento de uma fatura
  * para uma data de compra. Usado pelo criarLancamento quando a conta for tipo 'cartao'
  * e o user nao informar a fatura explicitamente.
@@ -229,6 +380,16 @@ export function listarLancamentosDaFatura(db, faturaId) {
  *   foi depois do fechamento).
  * - data_vencimento: dia_vencimento do mes seguinte ao ciclo.
  */
+/**
+ * v0.12.3: Retorna o ultimo dia de um mes/ano (1-31). Resolve o bug do
+ * dia 31 em meses curtos (abril, jun, set, nov, fev): sem clamp,
+ * `calcularCicloDaCompra` gerava `2026-04-31` que SQLite normalizava
+ * silenciosamente para `2026-05-01`, propagando datas erradas.
+ */
+export function diasNoMes(ano, mes) {
+  return new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+}
+
 export function calcularCicloDaCompra(db, { cartaoId, dataCompra }) {
   if (!Number.isInteger(cartaoId)) throw new Error('cartaoId obrigatorio.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dataCompra)) throw new Error('dataCompra deve ser YYYY-MM-DD.');
@@ -244,12 +405,14 @@ export function calcularCicloDaCompra(db, { cartaoId, dataCompra }) {
     if (cicloM > 12) { cicloM = 1; cicloY = y + 1; }
   }
   const ciclo = `${cicloY}-${String(cicloM).padStart(2, '0')}`;
-  // data_fechamento: dia_fechamento do mes do ciclo
-  const dataFechamento = `${cicloY}-${String(cicloM).padStart(2, '0')}-${String(diaFech).padStart(2, '0')}`;
-  // data_vencimento: dia_vencimento do mes seguinte ao ciclo
+  // v0.12.3: clamp ao ultimo dia do mes (resolve abril 31 -> abril 30, fev 31 -> fev 28/29)
+  const diaFechEfetivo = Math.min(diaFech, diasNoMes(cicloY, cicloM));
+  const dataFechamento = `${cicloY}-${String(cicloM).padStart(2, '0')}-${String(diaFechEfetivo).padStart(2, '0')}`;
+  // data_vencimento: dia_vencimento do mes seguinte ao ciclo, com clamp
   let vencY = cicloY, vencM = cicloM + 1;
   if (vencM > 12) { vencM = 1; vencY = cicloY + 1; }
-  const dataVencimento = `${vencY}-${String(vencM).padStart(2, '0')}-${String(diaVenc).padStart(2, '0')}`;
+  const diaVencEfetivo = Math.min(diaVenc, diasNoMes(vencY, vencM));
+  const dataVencimento = `${vencY}-${String(vencM).padStart(2, '0')}-${String(diaVencEfetivo).padStart(2, '0')}`;
   return { ciclo, dataFechamento, dataVencimento };
 }
 

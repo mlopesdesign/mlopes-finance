@@ -80,9 +80,22 @@ if ($LASTEXITCODE -ne 0) {
   exit 1
 }
 
+# 6. v0.13.0+: Copia o Setup.exe pra pasta `instalador/` (local) com nome versionado
+# Marcio pediu (2026-08-20): "quero sempre o exe localmente em uma pasta chamada instalador".
+# A pasta `instalador/` eh gitignored (binarios nao vao pro repo).
+# Cada build adiciona o .exe com sufixo de versao, mantendo historico local.
+Write-Host "4. Copiando Setup.exe pra pasta instalador/ (local)..." -ForegroundColor Yellow
+$instaladorDir = Join-Path $root "instalador"
+if (-not (Test-Path $instaladorDir)) { New-Item -ItemType Directory -Path $instaladorDir -Force | Out-Null }
+$versaoLimpa = $Version -replace '^v', ''
+$instaladorExe = Join-Path $instaladorDir "MLopesFinance_Setup_v$versaoLimpa.exe"
+Copy-Item $setupExeFinal $instaladorExe -Force
+Write-Host "  Copiado: $instaladorExe" -ForegroundColor Green
+
 Write-Host ""
 Write-Host "=== Release $Version publicada com sucesso ===" -ForegroundColor Green
 Write-Host "  Setup.exe:    $setupExeFinal ($([math]::Round((Get-Item $setupExeFinal).Length / 1MB, 1)) MB)"
+Write-Host "  Instalador:   $instaladorExe (copia local versionada)"
 Write-Host "  resources.neu: $resourcesNeu ($([math]::Round((Get-Item $resourcesNeu).Length / 1MB, 1)) MB)"
 Write-Host "  ZIP portatil: REMOVIDO (Marcio nao trabalha com portatil)"
 Write-Host ""

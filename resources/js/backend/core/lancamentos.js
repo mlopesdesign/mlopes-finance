@@ -45,7 +45,7 @@ export function conciliarLancamento(db, id, agora = new Date().toISOString()) {
 
 export function resumo(db, contextoId) {
   const rows = db.exec(`SELECT natureza, COALESCE(SUM(valor_centavos), 0) total FROM lancamentos WHERE contexto_id = ? GROUP BY natureza`, [contextoId]);
-  const out = { receitas: 0, despesas: 0 };
+  const out = { receitas: 0, despesas: 0, lancamentos: Number(db.exec("SELECT COUNT(*) FROM lancamentos WHERE contexto_id = ? AND status != 'estornado' AND natureza IN ('receita','despesa')", [contextoId])[0]?.values?.[0]?.[0] ?? 0) };
   for (const [natureza, total] of rows[0]?.values ?? []) out[natureza === 'receita' ? 'receitas' : 'despesas'] = Number(total);
   return { ...out, saldo: out.receitas - out.despesas };
 }

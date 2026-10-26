@@ -67,7 +67,23 @@ export function criarProjeto(db, { contextoId, clienteId = null, nome, descricao
 }
 export function listarProjetos(db, contextoId) {
   exigirContextoEId(contextoId, 'projetos');
-  return db.exec(`SELECT * FROM projetos WHERE contexto_id = ? AND ativo = 1 ORDER BY nome`, [contextoId])[0]?.values ?? [];
+  // v0.12.3: JOIN com clientes para retornar cliente_nome (corrige bug do r[2]
+  // que era cliente_id sendo renderizado como nome na tela de projetos).
+  // Shape: [id, contexto_id, nome, cliente_id, cliente_nome, descricao, data_inicio, data_fim, ativo, criado_em, atualizado_em]
+  return db.exec(`
+    SELECT p.id, p.contexto_id, p.nome, p.cliente_id, COALESCE(c.nome, '—') AS cliente_nome,
+           p.descricao, p.data_inicio, p.data_fim, p.ativo, p.criado_em, p.atualizado_em
+    FROM projetos p
+    LEFT JOIN clientes c ON c.id = p.cliente_id
+    WHERE p.contexto_id = ? AND p.ativo = 1
+    ORDER BY p.nome
+  `, [contextoId])[0]?.values ?? [];
+}
+
+/** Busca um projeto pelo id, retornando shape completo (incluindo cliente_id real para edicao). */
+export function obterProjeto(db, id) {
+  if (!Number.isInteger(id)) return null;
+  return db.exec(`SELECT * FROM projetos WHERE id = ?`, [id])[0]?.values?.[0] ?? null;
 }
 export function atualizarProjeto(db, id, campos) {
   const permitidos = ['cliente_id', 'nome', 'descricao', 'data_inicio', 'data_fim', 'ativo'];
